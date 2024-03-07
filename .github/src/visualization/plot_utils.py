@@ -3,10 +3,8 @@ import os
 from pathlib import Path
 from typing import List
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
-from matplotlib import colormaps
-
 
 from ..preprocessing.file_utils import Metadata
 from ..preprocessing.file_utils import print_list_metadata
@@ -55,7 +53,6 @@ def plot_viirs_histogram(
     plt.ylabel('Frequency')
     plt.grid(True)
 
-    # fill in the code here
     if image_dir is None:
         plt.show()
     else:
@@ -101,8 +98,7 @@ def plot_sentinel1_histogram(
     plt.xlabel(np.max(flattened_data))
     plt.ylabel('Frequency')
     plt.grid(True)
-    #plt.show()
-    # fill in the code here
+
     if image_dir is None:
         plt.show()
     else:
@@ -157,7 +153,6 @@ def plot_sentinel2_histogram(
     None
     """
 
-    #sentinel2_stack = preprocess_data(sentinel2_stack,"sentinel2")
     flattened_data = sentinel2_stack.flatten()
 
     # Plot the histogram
@@ -167,8 +162,7 @@ def plot_sentinel2_histogram(
     plt.xlabel('Pixel Intensity')
     plt.ylabel('Frequency')
     plt.grid(True)
-    #plt.show()
-    # fill in the code here
+    
     if image_dir is None:
         plt.show()
     else:
@@ -240,11 +234,6 @@ def plot_gt_counts(ground_truth: np.ndarray,
     """
     
     flattened_data = ground_truth.flatten()
-    
-    # Create a color list in the order of your classes
-    #colors = ["#ff0000","#0000ff","#ffff00","#b266ff"]
-    #cmap = ListedColormap(colors)
-    # Plot the histogram
 
     plt.figure(figsize=(10, 6))
     plt.hist(flattened_data, range=[1,5])
@@ -253,7 +242,6 @@ def plot_gt_counts(ground_truth: np.ndarray,
     plt.ylabel('Frequency')
     plt.grid(True)
     
-    # fill in the code here
     if image_dir is None:
         plt.show()
     else:
@@ -282,7 +270,6 @@ def plot_viirs(
     None
     """
     viirs = preprocess_data(viirs,"viirs")
-    # fill in the code here
     plt.figure(figsize=(6, 6))
 
     plt.imshow(viirs[0][0])  # Use grayscale color map for 2D images
@@ -342,7 +329,6 @@ def plot_viirs_by_date(
     return
     
 
-#DONE?
 def preprocess_data(
         satellite_stack: np.ndarray,
         satellite_type: str
@@ -412,7 +398,6 @@ def create_rgb_composite_s1(
     #r=VV, g=VH, b=VV-VH
 
     #init rgb array
-    #print(processed_stack.shape)
     width = processed_stack.shape[-1]  # Length of the last dimension
     height = processed_stack.shape[-2]  # Length of the second last dimension
     rgb = np.zeros((len(metadata),height,width,3))
@@ -426,7 +411,6 @@ def create_rgb_composite_s1(
         vvvh = np.zeros((height,width))
 
         for j,band in enumerate(date.bands):
-            #print(band)
             if band=="VH":
                 vh = processed_stack[i][j]
             if band=="VV":
@@ -436,11 +420,6 @@ def create_rgb_composite_s1(
         
         vvvh = minmax_scale(vvvh,False)
         
-        #print("VV:",np.mean(vv))
-        #print("VH:",np.mean(vh))
-        #print("VV-VH:",np.mean(vvvh))
-        #vvvh = vvvh*.7
-        #aligned(vv,vh,vvvh)
         
         rgb[i,:,:,0] = vv
         rgb[i,:,:,1] = vh
@@ -459,7 +438,6 @@ def create_rgb_composite_s1(
     plt.tight_layout(pad=3.0, h_pad=5.0)  # Adjust horizontal padding between plots
     fig.subplots_adjust(top=0.95)  # Adjust top spacing to fit the suptitle
 
-    #plt.show()
     if image_dir is None:
         plt.show()
     else:
@@ -541,11 +519,8 @@ def plot_images(
             combined_bands = np.zeros((height,width,len(band_list)))
             for j, band in enumerate(band_list):
                 combined_bands[:,:,j] = time_step[band_mapping[band]]
-                #print("j:",j,"band:",band,"maps2:",band_mapping[band])
-                #print(j, np.average(combined_bands[:,:,j]))
-            #print('\n')
+                
 
-            #aligned(combined_bands[:,:,0],combined_bands[:,:,1],combined_bands[:,:,2])
             if len(bands_to_plot) == 1:
                 ax[i].imshow(combined_bands)
                 ax[i].set_xlabel(data.time)
@@ -630,7 +605,6 @@ def extract_band_ids(metadata: List[Metadata]) -> List[List[str]]:
         A list of band identifiers.
     """
     band_ids = [meta.bands for meta in metadata]
-    #print("extracted bands: ",band_ids)
     return band_ids
 
 
@@ -653,29 +627,14 @@ def plot_ground_truth(
     3	Human settlements with electricity	    ffff00
     4	No human settlements with electricity	    b266ff
 '''
-    
-    
-    #print(ground_truth[0][0])
-    
-    class_colors = {
-        1: "#ff0000",  # red
-        2: "#0000ff",  # blue
-        3: "#ffff00",  # yellow
-        4: "#b266ff"   # purple
-    }
-    # Create a color list in the order of your classes
-    colors = [class_colors[i] for i in range(1, 4)]
-    #colors = ["#ff0000", "#0000ff","#ffff00","#b266ff" ]
-    # Create a custom colormap
+        
+    cmap = matplotlib.colors.LinearSegmentedColormap.from_list("Settlements", np.array(['#ff0000', '#0000ff', '#ffff00', '#b266ff']), N=4)
 
-    cmap = ListedColormap(colors)
     
     plt.figure(figsize=(6, 6))
     plt.imshow(ground_truth[0][0],cmap=cmap)  
     plt.title(plot_title)
     
-
-    # fill in the code here
     if image_dir is None:
         plt.show()
     else:
