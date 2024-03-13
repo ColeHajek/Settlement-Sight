@@ -117,7 +117,7 @@ def restitch_and_plot(options, datamodule, model, parent_tile_id, satellite_type
     #axs[2].set_title("Predictions")
     #axs[2].imshow(predictions,cmap=cmap, vmin = -0.5, vmax = 3.5) 
 
-    axs[2].set_title("Ground Truth")
+    axs[2].set_title("Model Predictions")
     axs[2].imshow(full_tile_preds,cmap=cmap, vmin=-0.5, vmax=3.5)
 
     # make sure to use cmap=cmap, vmin=-0.5 and vmax=3.5 when running

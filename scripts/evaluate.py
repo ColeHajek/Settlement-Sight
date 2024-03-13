@@ -36,13 +36,13 @@ import tifffile
 class EvalConfig:
     processed_dir: str | os.PathLike = root / 'data/processed/4x4'
     raw_dir: str | os.PathLike = root / 'data/raw/Train'
-    results_dir: str | os.PathLike = root / 'data/predictions' / "FCNResnetTransfer"
+    results_dir: str | os.PathLike = root / 'data/predictions' / "UNet"
     selected_bands: None = None
     tile_size_gt: int = 4
     batch_size: int = 8
     seed: int = 12378921
     num_workers: int = 11
-    model_path: str | os.PathLike = root / "models" / "FCNResnetTransfer" / "last.ckpt"
+    model_path: str | os.PathLike = root / "models" / "UNet" / "last-v3.ckpt"
 
 
 def main(options):

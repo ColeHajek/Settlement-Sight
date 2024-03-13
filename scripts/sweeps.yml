@@ -11,7 +11,7 @@ parameters:
   - name: max_epochs
     values: [10, 20, 30]
   - name: model_type
-    values: ["SegmentationCNN", "UNet", "FCNResnetTransfer"]
+    values: ["SegmentationCNN", "UNet"]
   - name: n_encoders
     values: [2, 3]
   - name: depth

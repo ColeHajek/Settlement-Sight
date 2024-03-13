@@ -1,5 +1,6 @@
 import pyprojroot
 import sys
+import torch
 root = pyprojroot.here()
 sys.path.append(str(root))
 import pytorch_lightning as pl
@@ -34,7 +35,7 @@ class ESDConfig:
     raw_dir: str | os.PathLike = root / 'data/raw/Train'
     selected_bands: None = None #dict# {'sentinel1': ['VV', 'VH']} #None = None
     #selected_bands: Dict[str, List[str]]
-    model_type: str = "FCNResnetTransfer"
+    model_type: str = "UNet"
     tile_size_gt: int = 4
     batch_size: int = 8
     max_epochs: int = 4
@@ -43,7 +44,7 @@ class ESDConfig:
     num_workers: int = 11
     accelerator: str = "cpu"
     devices: int = 1
-    in_channels: int = 8
+    in_channels: int = 99
     out_channels: int = 4
     depth: int = 2
     n_encoders: int = 2
@@ -53,8 +54,27 @@ class ESDConfig:
     scale_factor: int = 50
     wandb_run_name: str | None = None
     load_from_chkpt = False
-    model_path: str | os.PathLike = root / "models" / "SegmentationCNN" / "last.ckpt"
+    model_path: str | os.PathLike = root / "models" / "UNet" / "last.ckpt"
 
+#/Users/coleh/Desktop/School/Winter2024/CS_175/Homeworks/hw03-segmentation-the-thunder-men/.my_venv
+def calculate_class_weights(dataset):
+    # Count the frequencies of each class in the dataset
+    class_frequencies = dataset.count_frequencies()
+    
+    # Adjust the class labels if necessary (e.g., subtract 1 if your class labels start from 1 instead of 0)
+    class_frequencies = {int(key) - 1: value for key, value in class_frequencies.items()}
+    
+    # Sort the class frequencies based on class indices
+    sorted_class_frequencies = {k: class_frequencies[k] for k in sorted(class_frequencies)}
+    
+    # Calculate the inverse of each class frequency
+    # If a frequency is zero (indicating no samples for a class), handle it to avoid division by zero
+    print("Class Frequencies:",sorted_class_frequencies)
+    true_class_weights = torch.tensor([1000.0 / value if value != 0 else 0 for value in sorted_class_frequencies.values()], dtype=torch.float)
+    #sum_weights = torch.sum(true_class_weights)
+    #normalized_weights = true_class_weights / sum_weights
+    return true_class_weights
+    
 def train(options: ESDConfig):
     """
     Prepares datamodule and model, then runs the training loop
@@ -80,12 +100,17 @@ def train(options: ESDConfig):
     
     # initiate the ESDDatamodule
     datamodule = ESDDataModule(options.processed_dir, options.raw_dir,
-                              {'sentinel1': ['VV', 'VH']}, options.tile_size_gt,
+                              options.selected_bands, options.tile_size_gt,
                                options.batch_size, options.seed)
 
     # make sure to prepare_data in case the data has not been preprocessed
     datamodule.prepare_data()
     datamodule.setup()
+
+    #print validation
+    val_class_dist = calculate_class_weights(datamodule.val_dataset)
+    true_class_weights = calculate_class_weights(datamodule.train_dataset)
+
     train_dataloader = datamodule.train_dataloader()
     val_dataloader = datamodule.val_dataloader()
     
@@ -96,25 +121,30 @@ def train(options: ESDConfig):
         "architecture": options.model_type,
         "dataset": "IEEE sat",
         "epochs": options.max_epochs,
+        #"device": options.accelerator
     }
     # initialize the ESDSegmentation module
     
     #Load model or create new one
     if options.load_from_chkpt:
         model = ESDSegmentation.load_from_checkpoint(
-            checkpoint_path=str(options.model_path),
-            model_type=options.model_type,
-            in_channels=options.in_channels,
-            out_channels=options.out_channels,
-            learning_rate=options.learning_rate,
-            params=params  # Add other necessary parameters as needed
+            checkpoint_path = str(options.model_path),
+            model_type = options.model_type,
+            in_channels = options.in_channels,
+            out_channels = options.out_channels,
+            learning_rate = options.learning_rate,
+            class_weights = true_class_weights,
+            params = params  # Add other necessary parameters as needed
         )
     else:
-        model = ESDSegmentation(options.model_type,
-                                options.in_channels,
-                                options.out_channels,
-                                options.learning_rate,
-                                params)
+        model = ESDSegmentation(
+            model_type = options.model_type,
+            in_channels = options.in_channels,
+            out_channels = options.out_channels,
+            learning_rate = options.learning_rate,
+            class_weights = true_class_weights,
+            model_params = params
+        )
     wb_logger.watch(model)
     # Use the following callbacks, they're provided for you,
     # but you may change some of the settings
