@@ -7,7 +7,7 @@ from typing import Dict, List
 
 import numpy as np
 import pyprojroot
-from torch.utils.data import Dataset 
+from torch.utils.data import Dataset
 
 from ..preprocessing.subtile_esd_hw02 import Subtile, TileMetadata
 
@@ -44,13 +44,15 @@ class DSE(Dataset):
         self.root_dir = root_dir
         self.selected_bands = selected_bands
         self.transform = transform
-        tile_list = list(Path(self.root_dir).glob("*"))
+        tile_list = list(Path(self.root_dir/ 'subtiles').glob("*"))
+        
         self.tiles = sorted(
             tile_list,
             key=lambda path: tuple(
-                map(int, re.findall(r"Tile\d+_(\d+)_(\d+)\.npz", str(path.name))[0])
+                map(int, re.findall(r"Tile(\d+)_(\d+)_(\d+)\.npz", str(path.name))[0])
             ),
         )
+        
 
     def __len__(self):
         """
@@ -182,6 +184,7 @@ class DSE(Dataset):
 
         aggregated_data = []
         for satellite_name, satellite_data in selected_bands.items():
+            #print("SatName: ",satellite_name)
             if satellite_name != "gt":  # Skip ground truth data
                 aggregated = self.__aggregate_time(satellite_data)
                 aggregated_data.append(aggregated)
@@ -197,6 +200,8 @@ class DSE(Dataset):
         y = np.zeros((1, gt.shape[-2], gt.shape[-1]))
         y[0, :, :] = gt[0, 0, :, :]
 
+        # change the range of y from 1-4 to 0-3 to conform with pytorch's zero indexing
+        y -= 1
         # if there is a transform, apply it to both X and y
         if self.transform is not None:
             transformed = self.transform({"X": X, "y": y})
