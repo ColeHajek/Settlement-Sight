@@ -15,7 +15,7 @@ class ESDSegmentation(pl.LightningModule):
     """
     LightningModule for training a segmentation model on the ESD dataset
     """
-    def __init__(self, model_type, in_channels, out_channels, 
+    def __init__(self, model_type, in_channels, out_channels, class_weights=None,
                  learning_rate=1e-3, model_params: dict = {}):
         """
         Initializes the model with the given parameters.
@@ -32,7 +32,13 @@ class ESDSegmentation(pl.LightningModule):
         """
         super().__init__()
         self.save_hyperparameters()
+        self.class_weights = class_weights
+        if class_weights == None:
+            print("no weights")
+        #self.device = model_params['device']
         self.learning_rate = learning_rate
+        print("Learning rate:",self.learning_rate)
+        print("Class_weights:",self.class_weights)
 
         if model_type == "SegmentationCNN":
             self.model = SegmentationCNN(in_channels,out_channels, **model_params)
@@ -57,6 +63,7 @@ class ESDSegmentation(pl.LightningModule):
         self.avg_F1Score = MulticlassF1Score(num_classes = out_channels)
         self.per_class_F1Score = MulticlassF1Score(num_classes=out_channels,average=None)
 
+
     
     def forward(self, X):
         """
@@ -65,7 +72,6 @@ class ESDSegmentation(pl.LightningModule):
         Input: X, a (batch, input_channels, width, height) image
         Ouputs: y, a (batch, output_channels, width/scale_factor, height/scale_factor) image
         """
-        # return self.model.forward(X)
         y_pred = self.model.forward(X)
         return y_pred # list of probabilitiels falls under each class 
     # prob would sum up to one 
@@ -117,37 +123,41 @@ class ESDSegmentation(pl.LightningModule):
         target = target.to(torch.int64)
 
         preds = self.forward(sat_img)
-
-        loss = F.cross_entropy(preds, target)
+        if self.class_weights is not None:
+            class_weights = self.class_weights #.to(self.device)  # Move class weights to the same device as the model
+            loss = F.cross_entropy(preds, target, weight=class_weights)
+        else:
+            loss = F.cross_entropy(preds, target)
         
         ## Record Performance Metrics ##
+        self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True, enable_graph=True)
 
         # Accuracy
         acc = self.avg_acc(preds, target)
         per_class_acc = self.per_class_acc(preds,target)
         
-        self.log('train_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+        self.log('train_acc', acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
         for c in range(4):
             label = 'train_class_' + str(c+1) + '_acc'
-            self.log(label, per_class_acc[c], on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+            self.log(label, per_class_acc[c], on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
         
         # Area Under Curve
         auc = self.avg_AUC(preds,target)
         per_class_auc = self.per_class_AUC(preds,target)
 
-        self.log('train_auc',auc,on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+        self.log('train_area_under_curve',auc,on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
         for c in range(4):
-            label = 'train_class_' + str(c+1) + '_auc'
-            self.log(label,per_class_auc[c],on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+            label = 'train_class_' + str(c+1) + '_area_under_curve'
+            self.log(label,per_class_auc[c],on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
 
         # F1 Score
         f1 = self.avg_F1Score(preds,target)
         per_class_f1 = self.per_class_F1Score(preds,target)
         
-        self.log('train_f1',f1,on_step=True, on_epoch=True, prog_bar=True, logger=True,enable_graph=True)
+        self.log('train_f1',f1,on_step=False, on_epoch=True, prog_bar=True, logger=True,enable_graph=True)
         for c in range(4):
             label = 'train_class_' + str(c+1) + '_f1'
-            self.log(label,per_class_f1[c],on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+            self.log(label,per_class_f1[c],on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
         
         return loss
     
@@ -192,35 +202,37 @@ class ESDSegmentation(pl.LightningModule):
         preds = self.forward(sat_img)
 
         loss = F.cross_entropy(preds, target)
-
+        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, enable_graph=True)
+        
         ## Record Performance Metrics ##
 
         # Accuracy
         acc = self.avg_acc(preds, target)
         per_class_acc = self.per_class_acc(preds,target)
         
-        self.log('val_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+        self.log('val_acc', acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
         for c in range(4):
             label = 'val_class_' + str(c+1) + '_acc'
-            self.log(label, per_class_acc[c], on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+            self.log(label, per_class_acc[c], on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
         
         # Area Under Curve
         auc = self.avg_AUC(preds,target)
         per_class_auc = self.per_class_AUC(preds,target)
 
-        self.log('val_auc',auc,on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+        self.log('val_area_under_curve',auc,on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
         for c in range(4):
-            label = 'val_class_' + str(c+1) + '_auc'
-            self.log(label,per_class_auc[c],on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+            label = 'val_class_' + str(c+1) + '_area_under_curve'
+            self.log(label,per_class_auc[c],on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
 
         # F1 Score
         f1 = self.avg_F1Score(preds,target)
         per_class_f1 = self.per_class_F1Score(preds,target)
         
-        self.log('val_f1',f1,on_step=True, on_epoch=True, prog_bar=True, logger=True,enable_graph=True)
+        self.log('val_f1',f1,on_step=False, on_epoch=True, prog_bar=True, logger=True,enable_graph=True)
         for c in range(4):
             label = 'val_class_' + str(c+1) + '_f1'
-            self.log(label,per_class_f1[c],on_step=True, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+            self.log(label,per_class_f1[c],on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
+        
         return loss
     
     def configure_optimizers(self):
@@ -232,4 +244,4 @@ class ESDSegmentation(pl.LightningModule):
             optimizer: torch.optim.Optimizer
                 Optimizer used to minimize the loss
         """
-        return torch.optim.SGD(self.parameters(),lr=self.learning_rate)
+        return torch.optim.Adam(self.parameters(),lr=self.learning_rate)

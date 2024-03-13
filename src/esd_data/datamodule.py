@@ -110,6 +110,8 @@ class ESDDataModule(pl.LightningDataModule):
             ]
         )
 
+    # raise NotImplementedError("DataModule __init__ function not implemented.")
+
     def __load_and_preprocess(
         self,
         tile_dir: str | os.PathLike,

@@ -4,7 +4,7 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List
-
+from collections import Counter
 import numpy as np
 import pyprojroot
 from torch.utils.data import Dataset
@@ -53,7 +53,15 @@ class DSE(Dataset):
             ),
         )
         
-
+    def count_frequencies(self):
+        class_counts = Counter()
+        for tile in self.tiles:
+            subtile_instance = Subtile()
+            loaded_subtile = subtile_instance.load(Path(tile))
+            gt_data = loaded_subtile.satellite_stack["gt"][0, 0, :, :]
+            class_counts.update(gt_data.flatten())
+        #print(class_counts)
+        return class_counts
     def __len__(self):
         """
         Returns number of tiles in the dataset
