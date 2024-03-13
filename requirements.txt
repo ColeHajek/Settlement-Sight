@@ -4,3 +4,14 @@ pyprojroot
 pydrive
 tifffile
 scipy
+gdown
+tqdm
+opencv-python
+umap-learn
+scikit-learn
+torch
+torchvision
+wandb
+lightning
+torchmetrics
+rich
