@@ -38,9 +38,9 @@ class ESDConfig:
     model_type: str = "UNet"
     tile_size_gt: int = 4
     batch_size: int = 8
-    max_epochs: int = 4
+    max_epochs: int = 10
     seed: int = 12378921
-    learning_rate: float = 0.01
+    learning_rate: float = 0.001
     num_workers: int = 11
     accelerator: str = "cpu"
     devices: int = 1
@@ -53,10 +53,9 @@ class ESDConfig:
     kernel_size: int = 3
     scale_factor: int = 50
     wandb_run_name: str | None = None
-    load_from_chkpt = False
+    load_from_chkpt = True
     model_path: str | os.PathLike = root / "models" / "UNet" / "last.ckpt"
 
-#/Users/coleh/Desktop/School/Winter2024/CS_175/Homeworks/hw03-segmentation-the-thunder-men/.my_venv
 def calculate_class_weights(dataset):
     # Count the frequencies of each class in the dataset
     class_frequencies = dataset.count_frequencies()
