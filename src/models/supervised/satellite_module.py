@@ -1,6 +1,5 @@
 import torch
 import pytorch_lightning as pl
-from torch.optim import Adam
 from torch import nn
 from torch.nn import functional as F
 import torchmetrics
@@ -33,9 +32,6 @@ class ESDSegmentation(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.class_weights = class_weights
-        if class_weights == None:
-            print("no weights")
-        #self.device = model_params['device']
         self.learning_rate = learning_rate
         print("Learning rate:",self.learning_rate)
         print("Class_weights:",self.class_weights)
@@ -74,9 +70,7 @@ class ESDSegmentation(pl.LightningModule):
         """
         y_pred = self.model.forward(X)
         return y_pred # list of probabilitiels falls under each class 
-    # prob would sum up to one 
-    # X is a list of data (batch) 
-    # X will give us a list of probabilities (subtiles) and they are in a form of a batch
+   
 
         
     def training_step(self, batch, batch_idx):
@@ -123,10 +117,9 @@ class ESDSegmentation(pl.LightningModule):
         target = target.to(torch.int64)
 
         preds = self.forward(sat_img)
-        self.class_weights = None
+        
         if self.class_weights is not None:
-            class_weights = self.class_weights #.to(self.device)  # Move class weights to the same device as the model
-            loss = F.cross_entropy(preds, target, weight=class_weights)
+            loss = F.cross_entropy(preds, target, weight=self.class_weights)
         else:
             loss = F.cross_entropy(preds, target)
         
@@ -246,14 +239,12 @@ class ESDSegmentation(pl.LightningModule):
                 Optimizer used to minimize the loss
         """
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)  # Example scheduler
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)  # Example scheduler
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
                 'scheduler': scheduler,
                 'interval': 'epoch',  # or 'step' for step-wise updates
                 'frequency': 1,
-                'monitor': 'train_loss',  # Optional: for 'ReduceLROnPlateau'
             }
         }
-        return torch.optim.Adam(self.parameters(),lr=self.learning_rate)

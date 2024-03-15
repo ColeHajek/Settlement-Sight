@@ -33,18 +33,17 @@ class ESDConfig:
     """
     processed_dir: str | os.PathLike = root / 'data/processed/4x4' #
     raw_dir: str | os.PathLike = root / 'data/raw/Train'
-    selected_bands: None = None #dict# {'sentinel1': ['VV', 'VH']} #None = None
-    #selected_bands: Dict[str, List[str]]
+    selected_bands: None = None 
     model_type: str = "UNet"
     tile_size_gt: int = 4
     batch_size: int = 8
-    max_epochs: int = 10
+    max_epochs: int = 30
     seed: int = 12378921
     learning_rate: float = 0.001
     num_workers: int = 11
     accelerator: str = "cpu"
     devices: int = 1
-    in_channels: int = 30
+    in_channels: int = 45
     out_channels: int = 4
     depth: int = 2
     n_encoders: int = 2
@@ -54,12 +53,11 @@ class ESDConfig:
     scale_factor: int = 50
     wandb_run_name: str | None = None
     load_from_chkpt = False
+    weights = True
     model_path: str | os.PathLike = root / "models" / "UNet" / "last.ckpt"
-    
-#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["4","5","6"]}
-#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["3","4","5","6","7"]}
-##{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["3","4","5","6","7"]}
 
+'''
+#Previous method of getting class_weights
 def calculate_class_weights(dataset):
     # Count the frequencies of each class in the dataset
     class_frequencies = dataset.count_frequencies()
@@ -77,57 +75,39 @@ def calculate_class_weights(dataset):
     #sum_weights = torch.sum(true_class_weights)
     #normalized_weights = true_class_weights / sum_weights
     return true_class_weights
-#potentially useful bands:
-# need: viirs_maxproj
-# landsat 9 for detecting if theres a cloud, this would help tell other tiles to ignore it
-# landsat maybe 10 or 11? they're used for measuring surface temperatures
-# landsat 4 red wavelength good for urban areas and different types of vegitation/soils
-# landsat 3 (green) for detecting vegetation and water bodies
-# probably exclude landsat 1 and 2
-# 
+    '''
 
-'''
-Explination of band functions:
-with importance ranking
-Landsat Bands:
-1/5 Band 1 (Coastal/Aerosol): Captures light in the coastal and aerosol wavelengths, useful for studying coastal water and atmospheric aerosols.            Probably exclude
-1/5 Band 2 (Blue): Primarily captures blue light, used in marine and atmospheric studies.                                                                   Probably exclude
-4/5 Band 3 (Green): Captures green light, useful for analyzing vegetation and water bodies.                                                                 Use?
-4/5 Band 4 (Red): Captures red light, helpful for distinguishing different types of vegetation, soils, and urban areas.                                     
-4/5 Band 5 (Near-Infrared): Reflects plant health and biomass content, useful for assessing vegetation and water body delineation.
-3/5 Band 6 (SWIR 1): Sensitive to moisture in soil and vegetation, helps in plant stress analysis and fire detection.
-3/5? Band 7 (SWIR 2): Penetrates atmospheric haze well, useful for geological and soil mapping.
-3/5? Band 8 (Panchromatic): Provides high-resolution black-and-white imagery, useful for detailed mapping.
-4/5? Band 9 (Cirrus): Detects high atmospheric clouds, aiding in cloud correction for other bands.
-Band 10 (Thermal Infrared 1): Measures soil and surface temperatures, useful in geothermal and vegetation studies.
-Band 11 (Thermal Infrared 2): Similar to Band 10 but at a different wavelength, providing additional temperature information.
+def calculate_class_weights(dataset):
+    # Count the frequencies of each class in the dataset
+    class_frequencies = dataset.count_frequencies()
+    
+    # Adjust the class labels if necessary (e.g., subtract 1 if your class labels start from 1 instead of 0)
+    class_frequencies = {int(key) - 1: value for key, value in class_frequencies.items()}
+    
+    # Sort the class frequencies based on class indices
+    sorted_class_frequencies = {k: class_frequencies[k] for k in sorted(class_frequencies)}
+    
+    # Calculate the total number of samples
+    total_samples = sum(sorted_class_frequencies.values())
+    
+    # Calculate the number of classes
+    num_classes = len(sorted_class_frequencies)
 
-Sentinel-1 Bands:
-6/10 VH (Vertical Transmit, Horizontal Receive): Useful for differentiating between types of surfaces and moisture levels, particularly in vegetation.
-9/10 VV (Vertical Transmit, Vertical Receive): Provides details on surface texture and moisture, better for urban and water body mapping.
+    print("Class Frequencies:", sorted_class_frequencies)
+    true_class_weights = torch.tensor(
+        [(total_samples / (num_classes * value)) if value != 0 else 0 for value in sorted_class_frequencies.values()],
+        dtype=torch.float
+    )
 
-Sentinel-2 Bands:
-Band 01 (Coastal/Aerosol): Helps with coastal and atmospheric studies, similar to Landsat.
-Band 02 (Blue): Used for water body detection and atmospheric correction.
-Band 03 (Green): Important for analyzing plant health and land.
-Band 04 (Red): Essential for vegetation differentiation and health assessment.
-Band 05 (Vegetation Red Edge): Provides information on plant chlorophyll content.
-Band 06 (Vegetation Red Edge): Further details on plant health, used in vegetation indices.
-Band 07 (Vegetation Red Edge): Adds depth to vegetation mapping and health assessment.
-Band 08 (NIR): Key for assessing vegetation biomass and water bodies.
-Band 09 (Water Vapour): Used for atmospheric correction and studying moisture.
-Band 11 (SWIR): Good for soil and vegetation moisture content analysis.
-Band 12 (SWIR): Used for atmospheric contamination detection and correction.
-Band 8A (Narrow NIR): Provides detailed vegetation information, particularly for crop monitoring.
+    return true_class_weights
 
-VIIRS Bands:
-Band 0: Utilized for night-time light detection, essential for observing human activity, urbanization, and electricity usage.
-
-VIIRS MaxProj Bands:
-Band 0: Essentially the same as the standard VIIRS Band 0, designed for capturing night-time light, but typically used in different data products or processing techniques.
+# potential band combinations that could be good    
+#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["4","5","6"]}
+#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["3","4","5","6","7"]}
+#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
+#{ "viirs_maxproj": ["0"],"viirs": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
 
 
-'''
 def train(options: ESDConfig):
     """
     Prepares datamodule and model, then runs the training loop
@@ -149,19 +129,19 @@ def train(options: ESDConfig):
         "epochs": options.max_epochs,
         }
     )
-    #models/SegmentationCNN/last.ckpt
-    
+
+    #temporary hardcoding bands so i dont have to type them in terminal
+    options.selected_bands = { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
+   
     # initiate the ESDDatamodule
     datamodule = ESDDataModule(options.processed_dir, options.raw_dir,
-                              { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["4","5","6"]}, options.tile_size_gt,
+                              options.selected_bands, options.tile_size_gt,
                                options.batch_size, options.seed)
 
     # make sure to prepare_data in case the data has not been preprocessed
     datamodule.prepare_data()
     datamodule.setup()
 
-    #print validation
-    val_class_dist = calculate_class_weights(datamodule.val_dataset)
     true_class_weights = calculate_class_weights(datamodule.train_dataset)
 
     train_dataloader = datamodule.train_dataloader()
@@ -174,7 +154,6 @@ def train(options: ESDConfig):
         "architecture": options.model_type,
         "dataset": "IEEE sat",
         "epochs": options.max_epochs,
-        #"device": options.accelerator
     }
     # initialize the ESDSegmentation module
     

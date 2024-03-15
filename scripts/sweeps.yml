@@ -1,20 +1,19 @@
-method: random
+method: bayes
 name: hyperparameter-sweep
 metric:
   goal: minimize
   name: val_loss
 parameters:
   learning_rate:
-    values: [0.0001, 0.001, 0.01]
+    min: 0.000001
+    max: 0.1
   batch_size:
-    values: [8, 16, 32]
-  max_epochs:
-    values: [10, 15, 20]
-  model_type:
-    values: ["UNet"]
-  n_encoders:
-    values: [2, 3]
+    values: [8, 16, 32, 64]
   depth:
-    values: [2,3,4]
+    min: 1
+    max: 4
   embedding_size:
     values: [32, 64, 128]
+  n_encoders:
+    min: 1
+    max: 4

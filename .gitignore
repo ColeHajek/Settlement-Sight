@@ -16,7 +16,13 @@ references/*
 wandb/
 .my_venv
 lightning_logs/*
-
+README.md
+changelog.md
+LICENSE
+.DS_Store
+.keep
+.gitkeep
+data/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
