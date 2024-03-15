@@ -13,7 +13,7 @@ import numpy as np
 import pytorch_lightning as pl  # noqa
 import torch  # noqa
 from torch import Generator  # noqa
-from torch.utils.data import DataLoader, random_split  # noqa
+from torch.utils.data import DataLoader  # noqa
 from torchvision import transforms  # noqa
 from tqdm import tqdm  # noqa
 
@@ -22,7 +22,7 @@ from src.esd_data.augmentations import (
     Blur,
     RandomHFlip,
     RandomVFlip,
-    ToTensor,
+    ToTensor
 )
 from src.preprocessing.file_utils import Metadata
 
@@ -110,8 +110,6 @@ class ESDDataModule(pl.LightningDataModule):
             ]
         )
 
-    # raise NotImplementedError("DataModule __init__ function not implemented.")
-
     def __load_and_preprocess(
         self,
         tile_dir: str | os.PathLike,
@@ -164,6 +162,21 @@ class ESDDataModule(pl.LightningDataModule):
             metadata.satellite_type = "viirs_maxproj"
 
         return satellite_stack, satellite_metadata
+    
+    def process_save(self,tiles,path):
+        for tile in tiles:
+            # call __load_and_preprocess to load and preprocess the data for all satellite types
+            processed_data = self.__load_and_preprocess(tile_dir=tile)
+
+            # grid slice the data with the given tile_size_gt
+            subtiles = grid_slice(
+                satellite_stack=processed_data[0],
+                metadata_stack=processed_data[1],
+                tile_size_gt=self.tile_size_gt,
+            )
+            # save each subtile
+            for subtile in subtiles:
+                subtile.save(dir= path)
 
     def prepare_data(self, seed=1024):
         """
@@ -200,32 +213,9 @@ class ESDDataModule(pl.LightningDataModule):
         train_tiles = sorted(train_tiles, key=lambda x: [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', x.name)])
         val_tiles = sorted(val_tiles, key=lambda x: [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', x.name)])
 
-        for tile in train_tiles:
-            # call __load_and_preprocess to load and preprocess the data for all satellite types
-            processed_data = self.__load_and_preprocess(tile_dir=tile)
-            # grid slice the data with the given tile_size_gt
-            subtiles = grid_slice(
-                satellite_stack=processed_data[0],
-                metadata_stack=processed_data[1],
-                tile_size_gt=self.tile_size_gt,
-            )
-            # save each subtile
-            for subtile in subtiles:
-                subtile.save(dir= train_path)
+        self.process_save(train_tiles,train_path)
         
-        for tile in val_tiles:
-            # call __load_and_preprocess to load and preprocess the data for all satellite types
-            processed_data = self.__load_and_preprocess(tile_dir=tile)
-
-            # grid slice the data with the given tile_size_gt
-            subtiles = grid_slice(
-                satellite_stack=processed_data[0],
-                metadata_stack=processed_data[1],
-                tile_size_gt=self.tile_size_gt,
-            )
-            # save each subtile
-            for subtile in subtiles:
-                subtile.save(dir= val_path)
+        self.process_save(val_tiles,val_path)
             
     def setup(self, stage: str = None, seed=1024):
         """
@@ -242,23 +232,18 @@ class ESDDataModule(pl.LightningDataModule):
         train = DSE(
             root_dir= self.processed_dir / 'Train',
             selected_bands=self.selected_bands,
+            transform=self.transform,
+            
         )
-        
         val = DSE(
             root_dir= self.processed_dir / 'Val',
             selected_bands=self.selected_bands,
+            transform=self.transform,
         )
+
         self.train_dataset = train
         self.val_dataset = val
 
-        '''train_sample, train_label, _ = train[0]
-        print(f"Shape of the first training sample: {train_sample.shape}")
-        print(f"Shape of the first training label: {train_label.shape}")
-
-        # Access the first sample in the validation dataset
-        val_sample, val_label, _ = val[0]
-        print(f"Shape of the first validation sample: {val_sample.shape}")
-        print(f"Shape of the first validation label: {val_label.shape}")'''
 
     def train_dataloader(self):
         """

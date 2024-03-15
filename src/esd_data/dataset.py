@@ -60,7 +60,6 @@ class DSE(Dataset):
             loaded_subtile = subtile_instance.load(Path(tile))
             gt_data = loaded_subtile.satellite_stack["gt"][0, 0, :, :]
             class_counts.update(gt_data.flatten())
-        #print(class_counts)
         return class_counts
     def __len__(self):
         """
@@ -179,6 +178,10 @@ class DSE(Dataset):
         # load the subtiles using the Subtile class in
         # src/preprocessing/subtile_esd_hw02.py
         tile_path = self.tiles[idx]
+        
+        tile_number = re.findall(r"Tile(\d+)",str(tile_path))[0]
+        tile_number = int(re.findall(r'\d+',tile_number)[0])
+
         subtile_instance = Subtile()
         loaded_subtile = subtile_instance.load(tile_path)
 
@@ -211,7 +214,7 @@ class DSE(Dataset):
         # change the range of y from 1-4 to 0-3 to conform with pytorch's zero indexing
         y -= 1
         # if there is a transform, apply it to both X and y
-        if self.transform is not None:
+        if self.transform is not None and tile_number > 60:
             transformed = self.transform({"X": X, "y": y})
             X = transformed["X"]
             y = transformed["y"]
