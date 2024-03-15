@@ -44,7 +44,7 @@ class ESDConfig:
     num_workers: int = 11
     accelerator: str = "cpu"
     devices: int = 1
-    in_channels: int = 99
+    in_channels: int = 30
     out_channels: int = 4
     depth: int = 2
     n_encoders: int = 2
@@ -53,8 +53,12 @@ class ESDConfig:
     kernel_size: int = 3
     scale_factor: int = 50
     wandb_run_name: str | None = None
-    load_from_chkpt = True
+    load_from_chkpt = False
     model_path: str | os.PathLike = root / "models" / "UNet" / "last.ckpt"
+    
+#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["4","5","6"]}
+#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["3","4","5","6","7"]}
+##{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["3","4","5","6","7"]}
 
 def calculate_class_weights(dataset):
     # Count the frequencies of each class in the dataset
@@ -73,7 +77,57 @@ def calculate_class_weights(dataset):
     #sum_weights = torch.sum(true_class_weights)
     #normalized_weights = true_class_weights / sum_weights
     return true_class_weights
-    
+#potentially useful bands:
+# need: viirs_maxproj
+# landsat 9 for detecting if theres a cloud, this would help tell other tiles to ignore it
+# landsat maybe 10 or 11? they're used for measuring surface temperatures
+# landsat 4 red wavelength good for urban areas and different types of vegitation/soils
+# landsat 3 (green) for detecting vegetation and water bodies
+# probably exclude landsat 1 and 2
+# 
+
+'''
+Explination of band functions:
+with importance ranking
+Landsat Bands:
+1/5 Band 1 (Coastal/Aerosol): Captures light in the coastal and aerosol wavelengths, useful for studying coastal water and atmospheric aerosols.            Probably exclude
+1/5 Band 2 (Blue): Primarily captures blue light, used in marine and atmospheric studies.                                                                   Probably exclude
+4/5 Band 3 (Green): Captures green light, useful for analyzing vegetation and water bodies.                                                                 Use?
+4/5 Band 4 (Red): Captures red light, helpful for distinguishing different types of vegetation, soils, and urban areas.                                     
+4/5 Band 5 (Near-Infrared): Reflects plant health and biomass content, useful for assessing vegetation and water body delineation.
+3/5 Band 6 (SWIR 1): Sensitive to moisture in soil and vegetation, helps in plant stress analysis and fire detection.
+3/5? Band 7 (SWIR 2): Penetrates atmospheric haze well, useful for geological and soil mapping.
+3/5? Band 8 (Panchromatic): Provides high-resolution black-and-white imagery, useful for detailed mapping.
+4/5? Band 9 (Cirrus): Detects high atmospheric clouds, aiding in cloud correction for other bands.
+Band 10 (Thermal Infrared 1): Measures soil and surface temperatures, useful in geothermal and vegetation studies.
+Band 11 (Thermal Infrared 2): Similar to Band 10 but at a different wavelength, providing additional temperature information.
+
+Sentinel-1 Bands:
+6/10 VH (Vertical Transmit, Horizontal Receive): Useful for differentiating between types of surfaces and moisture levels, particularly in vegetation.
+9/10 VV (Vertical Transmit, Vertical Receive): Provides details on surface texture and moisture, better for urban and water body mapping.
+
+Sentinel-2 Bands:
+Band 01 (Coastal/Aerosol): Helps with coastal and atmospheric studies, similar to Landsat.
+Band 02 (Blue): Used for water body detection and atmospheric correction.
+Band 03 (Green): Important for analyzing plant health and land.
+Band 04 (Red): Essential for vegetation differentiation and health assessment.
+Band 05 (Vegetation Red Edge): Provides information on plant chlorophyll content.
+Band 06 (Vegetation Red Edge): Further details on plant health, used in vegetation indices.
+Band 07 (Vegetation Red Edge): Adds depth to vegetation mapping and health assessment.
+Band 08 (NIR): Key for assessing vegetation biomass and water bodies.
+Band 09 (Water Vapour): Used for atmospheric correction and studying moisture.
+Band 11 (SWIR): Good for soil and vegetation moisture content analysis.
+Band 12 (SWIR): Used for atmospheric contamination detection and correction.
+Band 8A (Narrow NIR): Provides detailed vegetation information, particularly for crop monitoring.
+
+VIIRS Bands:
+Band 0: Utilized for night-time light detection, essential for observing human activity, urbanization, and electricity usage.
+
+VIIRS MaxProj Bands:
+Band 0: Essentially the same as the standard VIIRS Band 0, designed for capturing night-time light, but typically used in different data products or processing techniques.
+
+
+'''
 def train(options: ESDConfig):
     """
     Prepares datamodule and model, then runs the training loop
@@ -99,7 +153,7 @@ def train(options: ESDConfig):
     
     # initiate the ESDDatamodule
     datamodule = ESDDataModule(options.processed_dir, options.raw_dir,
-                              options.selected_bands, options.tile_size_gt,
+                              { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["4","5","6"]}, options.tile_size_gt,
                                options.batch_size, options.seed)
 
     # make sure to prepare_data in case the data has not been preprocessed

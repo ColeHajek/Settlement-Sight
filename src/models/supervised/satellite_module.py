@@ -123,6 +123,7 @@ class ESDSegmentation(pl.LightningModule):
         target = target.to(torch.int64)
 
         preds = self.forward(sat_img)
+        self.class_weights = None
         if self.class_weights is not None:
             class_weights = self.class_weights #.to(self.device)  # Move class weights to the same device as the model
             loss = F.cross_entropy(preds, target, weight=class_weights)
@@ -244,4 +245,15 @@ class ESDSegmentation(pl.LightningModule):
             optimizer: torch.optim.Optimizer
                 Optimizer used to minimize the loss
         """
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)  # Example scheduler
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': 'epoch',  # or 'step' for step-wise updates
+                'frequency': 1,
+                'monitor': 'train_loss',  # Optional: for 'ReduceLROnPlateau'
+            }
+        }
         return torch.optim.Adam(self.parameters(),lr=self.learning_rate)
