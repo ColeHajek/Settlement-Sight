@@ -7,8 +7,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 from ..preprocessing.file_utils import Metadata
-from ..preprocessing.file_utils import print_list_metadata
-from ..preprocessing.file_utils import print_single_metadata
+#from ..preprocessing.file_utils import print_list_metadata
+#from ..preprocessing.file_utils import print_single_metadata
 from ..preprocessing.preprocess_sat import quantile_clip
 from ..preprocessing.preprocess_sat import minmax_scale
 from ..preprocessing.preprocess_sat import (
@@ -272,7 +272,7 @@ def plot_viirs(
     viirs = preprocess_data(viirs,"viirs")
     plt.figure(figsize=(6, 6))
 
-    plt.imshow(viirs[0][0])  # Use grayscale color map for 2D images
+    plt.imshow(viirs)  # Use grayscale color map for 2D images
     plt.title(plot_title)
     
     if image_dir is None:
@@ -417,8 +417,8 @@ def create_rgb_composite_s1(
                 vv = processed_stack[i][j]
         
         vvvh = vv-vh
-        
-        vvvh = minmax_scale(vvvh,False)
+        print(vvvh.shape)
+        vvvh = minmax_scale(vvvh,True)
         
         
         rgb[i,:,:,0] = vv
@@ -522,7 +522,7 @@ def plot_images(
                 
 
             if len(bands_to_plot) == 1:
-                ax[i].imshow(combined_bands)
+                ax[i].imshow(combined_bands, cmap='gray')
                 ax[i].set_xlabel(data.time)
             else:
                 ax[w,i].imshow(combined_bands)

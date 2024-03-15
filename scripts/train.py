@@ -33,18 +33,17 @@ class ESDConfig:
     """
     processed_dir: str | os.PathLike = root / 'data/processed/4x4'
     raw_dir: str | os.PathLike = root / 'data/raw/Train'
-    selected_bands: None = None #dict# {'sentinel1': ['VV', 'VH']} #None = None
-    #selected_bands: Dict[str, List[str]]
+    selected_bands: None = None 
     model_type: str = "UNet"
     tile_size_gt: int = 4
     batch_size: int = 8
-    max_epochs: int = 10
+    max_epochs: int = 30
     seed: int = 12378921
     learning_rate: float = 0.001
     num_workers: int = 11
     accelerator: str = "cpu"
     devices: int = 1
-    in_channels: int = 99
+    in_channels: int = 45
     out_channels: int = 4
     depth: int = 2
     n_encoders: int = 2
@@ -53,9 +52,12 @@ class ESDConfig:
     kernel_size: int = 3
     scale_factor: int = 50
     wandb_run_name: str | None = None
-    load_from_chkpt = True
+    load_from_chkpt = False
+    weights = True
     model_path: str | os.PathLike = root / "models" / "UNet" / "last.ckpt"
 
+'''
+#Previous method of getting class_weights
 def calculate_class_weights(dataset):
     # Count the frequencies of each class in the dataset
     class_frequencies = dataset.count_frequencies()
@@ -73,7 +75,39 @@ def calculate_class_weights(dataset):
     #sum_weights = torch.sum(true_class_weights)
     #normalized_weights = true_class_weights / sum_weights
     return true_class_weights
+    '''
+
+def calculate_class_weights(dataset):
+    # Count the frequencies of each class in the dataset
+    class_frequencies = dataset.count_frequencies()
     
+    # Adjust the class labels if necessary (e.g., subtract 1 if your class labels start from 1 instead of 0)
+    class_frequencies = {int(key) - 1: value for key, value in class_frequencies.items()}
+    
+    # Sort the class frequencies based on class indices
+    sorted_class_frequencies = {k: class_frequencies[k] for k in sorted(class_frequencies)}
+    
+    # Calculate the total number of samples
+    total_samples = sum(sorted_class_frequencies.values())
+    
+    # Calculate the number of classes
+    num_classes = len(sorted_class_frequencies)
+
+    print("Class Frequencies:", sorted_class_frequencies)
+    true_class_weights = torch.tensor(
+        [(total_samples / (num_classes * value)) if value != 0 else 0 for value in sorted_class_frequencies.values()],
+        dtype=torch.float
+    )
+
+    return true_class_weights
+
+# potential band combinations that could be good    
+#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["4","5","6"]}
+#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["3","4","5","6","7"]}
+#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
+#{ "viirs_maxproj": ["0"],"viirs": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
+
+
 def train(options: ESDConfig):
     """
     Prepares datamodule and model, then runs the training loop
@@ -95,8 +129,10 @@ def train(options: ESDConfig):
         "epochs": options.max_epochs,
         }
     )
-    #models/SegmentationCNN/last.ckpt
-    
+
+    #temporary hardcoding bands so i dont have to type them in terminal
+    options.selected_bands = { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
+   
     # initiate the ESDDatamodule
     datamodule = ESDDataModule(options.processed_dir, options.raw_dir,
                               options.selected_bands, options.tile_size_gt,
@@ -106,8 +142,6 @@ def train(options: ESDConfig):
     datamodule.prepare_data()
     datamodule.setup()
 
-    #print validation
-    val_class_dist = calculate_class_weights(datamodule.val_dataset)
     true_class_weights = calculate_class_weights(datamodule.train_dataset)
 
     train_dataloader = datamodule.train_dataloader()
@@ -120,7 +154,6 @@ def train(options: ESDConfig):
         "architecture": options.model_type,
         "dataset": "IEEE sat",
         "epochs": options.max_epochs,
-        #"device": options.accelerator
     }
     # initialize the ESDSegmentation module
     

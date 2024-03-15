@@ -2,6 +2,8 @@ import os
 import sys
 import pyprojroot
 root = pyprojroot.here()
+from pathlib import Path
+
 sys.path.append(str(root))
 from src.preprocessing.file_utils import (
     load_satellite,
@@ -24,10 +26,15 @@ from src.visualization.plot_utils import (
 
 if __name__ == "__main__":
 
-    tile1_dir = os.path.join(root, 'data', 'raw', 'Train', 'Tile47')
+    tile1_dir = os.path.join(root, 'data', 'raw', 'Train', 'Tile4')
     train_dir = os.path.join(root, 'data', 'raw', 'Train')
-    save_plots_dir = os.path.join(root, 'plots1')    
-    
+    save_plots_dir = os.path.join(root, 'plots')    
+
+    #ensure directory for saving plots exists
+    plt_path = Path(save_plots_dir)
+    if not plt_path.exists():
+        plt_path.mkdir(parents=True,exist_ok = True)
+
     testViirs = False
     testHistograms = False
     testS1 = False
@@ -75,13 +82,13 @@ if __name__ == "__main__":
     
     if testS2:
         sentinel2_stack, s2_metadata = load_satellite(tile1_dir, "sentinel2")
-        plot_satellite_by_bands(sentinel2_stack, s2_metadata, [['04', '03', '02'], ['08', '04', '03'], ['12', '8A', '04']], "sentinel2", image_dir=save_plots_dir)
+        plot_satellite_by_bands(sentinel2_stack, s2_metadata, [['04', '03', '02'],['01'],['02'],['03'],['04'],['05'],['06'],['07'],['08'],['09'],['11'],['12'],['8A']], "sentinel2", image_dir=save_plots_dir)
         print("plot s2 done")
 
     if testLandsat:
         landsat_stack, file_names = load_satellite(tile1_dir, "landsat")
              
-        plot_satellite_by_bands(landsat_stack, file_names, [['4', '3', '2'], ['7', '6', '4'], ['7', '5', '3']], "landsat", image_dir=save_plots_dir)
+        plot_satellite_by_bands(landsat_stack, file_names, [['4', '3', '2'], ['1'],['2'],['3'],['4'],['5'],['6'],['7'],['9'],['10'],['11']], "landsat", image_dir=save_plots_dir)
         print("plot landsat done")
         # # 4, 3, 2 RGB -> 5, 4, 3
         # # 5, 4, 3 color infrared ->
