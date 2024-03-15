@@ -31,7 +31,7 @@ class ESDConfig:
     Please make sure to use the correct types and default values for the parameters
     and that the path for processed_dir contain the tiles you would like 
     """
-    processed_dir: str | os.PathLike = root / 'data/processed/4x4' #
+    processed_dir: str | os.PathLike = root / 'data/processed/4x4'
     raw_dir: str | os.PathLike = root / 'data/raw/Train'
     selected_bands: None = None #dict# {'sentinel1': ['VV', 'VH']} #None = None
     #selected_bands: Dict[str, List[str]]
@@ -49,14 +49,13 @@ class ESDConfig:
     depth: int = 2
     n_encoders: int = 2
     embedding_size: int = 64
-    pool_sizes: str = "5,5,2" # List[int] = [5,5,2]
+    pool_sizes: str = "5,5,2"
     kernel_size: int = 3
     scale_factor: int = 50
     wandb_run_name: str | None = None
     load_from_chkpt = False
     model_path: str | os.PathLike = root / "models" / "UNet" / "last.ckpt"
 
-#/Users/coleh/Desktop/School/Winter2024/CS_175/Homeworks/hw03-segmentation-the-thunder-men/.my_venv
 def calculate_class_weights(dataset):
     # Count the frequencies of each class in the dataset
     class_frequencies = dataset.count_frequencies()
