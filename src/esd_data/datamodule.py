@@ -240,20 +240,6 @@ class ESDDataModule(pl.LightningDataModule):
             selected_bands=self.selected_bands,
             transform=self.transform,
         )
-        '''
-        train_augmented = DSE(
-            root_dir= self.processed_dir / 'Train',
-            selected_bands=self.selected_bands,
-            transform=self.transform,
-        )
-        val_augmented = DSE(
-            root_dir= self.processed_dir / 'Val',
-            selected_bands=self.selected_bands,
-            transform=self.transform,
-        )
-        self.train_dataset = ConcatDataset(train,train_augmented)
-        self.val_dataset = ConcatDataset(val,val_augmented)
-        '''
 
         self.train_dataset = train
         self.val_dataset = val
