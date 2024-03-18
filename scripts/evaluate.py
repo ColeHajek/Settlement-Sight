@@ -31,8 +31,8 @@ class EvalConfig:
     tile_size_gt: int = 4
     batch_size: int = 8
     seed: int = 12378921
-    num_workers: int = 0
-    model_path: str | os.PathLike = root / "models" / "UNet" / "last-v1.ckpt"
+    num_workers: int = 11
+    model_path: str | os.PathLike = root / "models" / "UNet" / "last-v4.ckpt"
 
 
 def main(options):
@@ -47,7 +47,7 @@ def main(options):
     options.selected_bands = {
         "viirs_maxproj": ["0"],
         "sentinel1": ["VV", "VH"],
-        "sentinel2": ["02", "03", "04", "08", "11", "12"],
+        "sentinel2": ["02", "03", "08", "11", "12"],
         "landsat": ["5", "6", "7", "8"],
     }
 
@@ -113,7 +113,12 @@ def main(options):
         )
 
         fig, ax = plt.subplots(nrows=1, ncols=1)
-        ax.imshow(y_pred, vmin=-0.5, vmax=3.5, cmap=cmap)
+        ax.imshow(
+            y_pred,
+            vmin=-0.5,
+            vmax=3.5,
+            cmap=cmap,
+        )
         plt.savefig(options.results_dir / f"{parent_tile_id}.png")
         tiff.imwrite(str(options.results_dir / f"{parent_tile_id}.tiff"), y_pred)
 

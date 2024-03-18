@@ -3,15 +3,14 @@ PyTorch ESD dataset."""
 
 import os
 import re
-import shutil
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Tuple
-from sklearn.model_selection import train_test_split
 
 import numpy as np
 import pytorch_lightning as pl  # noqa
 import torch  # noqa
+from sklearn.model_selection import train_test_split
 from torch import Generator  # noqa
 from torch.utils.data import DataLoader  # noqa
 from torchvision import transforms  # noqa
@@ -22,7 +21,7 @@ from src.esd_data.augmentations import (
     Blur,
     RandomHFlip,
     RandomVFlip,
-    ToTensor
+    ToTensor,
 )
 from src.preprocessing.file_utils import Metadata
 
@@ -45,10 +44,12 @@ def collate_fn(batch):
 
     for X, y, metadata in batch:
 
-        X_tensor = torch.tensor(X,dtype=torch.float32) #change this if you want to run float64
-        y_tensor = torch.tensor(y,dtype=torch.float32)
-        Xs.append(X_tensor)    #float32
-        ys.append(y_tensor)    #float64
+        X_tensor = torch.tensor(
+            X, dtype=torch.float32
+        )  # change this if you want to run float64
+        y_tensor = torch.tensor(y, dtype=torch.float32)
+        Xs.append(X_tensor)  # float32
+        ys.append(y_tensor)  # float64
 
         metadatas.append(metadata)
 
@@ -119,7 +120,8 @@ class ESDDataModule(pl.LightningDataModule):
             "sentinel2",
             "landsat",
             "gt",
-        ]) -> Tuple[Dict[str, np.ndarray], Dict[str, List[Metadata]]]:
+        ],
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, List[Metadata]]]:
         """
         Performs the preprocessing step: for a given tile located in tile_dir,
         loads the tif files and preprocesses them just like in homework 1.
@@ -162,8 +164,8 @@ class ESDDataModule(pl.LightningDataModule):
             metadata.satellite_type = "viirs_maxproj"
 
         return satellite_stack, satellite_metadata
-    
-    def process_save(self,tiles,path):
+
+    def process_save(self, tiles, path):
         for tile in tiles:
             # call __load_and_preprocess to load and preprocess the data for all satellite types
             processed_data = self.__load_and_preprocess(tile_dir=tile)
@@ -176,7 +178,7 @@ class ESDDataModule(pl.LightningDataModule):
             )
             # save each subtile
             for subtile in subtiles:
-                subtile.save(dir= path)
+                subtile.save(dir=path)
 
     def prepare_data(self, seed=1024):
         """
@@ -192,31 +194,45 @@ class ESDDataModule(pl.LightningDataModule):
         # subtiles of the parent image to save
         if Path(self.processed_dir).exists():
             return
-    
-        #create "data/processed/nxn/" directory
-        self.processed_dir.mkdir(parents=True,exist_ok = True)
-        
-        train_path = Path(self.processed_dir/'Train')
-        train_path.mkdir(parents = True, exist_ok = True)
 
-        #create data/processed/nxn/Val
-        val_path = Path(self.processed_dir/'Val')
-        val_path.mkdir(parents = True, exist_ok = True)
+        # create "data/processed/nxn/" directory
+        self.processed_dir.mkdir(parents=True, exist_ok=True)
+
+        train_path = Path(self.processed_dir / "Train")
+        train_path.mkdir(parents=True, exist_ok=True)
+
+        # create data/processed/nxn/Val
+        val_path = Path(self.processed_dir / "Val")
+        val_path.mkdir(parents=True, exist_ok=True)
 
         # fetch all the parent tiles in the raw_dir
         subdirectories = [d for d in self.raw_dir.iterdir() if d.is_dir()]
-    
+
         # randomly split the directories into train and val
-        train_tiles, val_tiles = train_test_split(subdirectories,test_size=0.2,train_size=0.8,random_state=seed)
+        train_tiles, val_tiles = train_test_split(
+            subdirectories, test_size=0.2, train_size=0.8, random_state=seed
+        )
 
-        #sort the subdirectories
-        train_tiles = sorted(train_tiles, key=lambda x: [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', x.name)])
-        val_tiles = sorted(val_tiles, key=lambda x: [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', x.name)])
+        # sort the subdirectories
+        train_tiles = sorted(
+            train_tiles,
+            key=lambda x: [
+                int(text) if text.isdigit() else text.lower()
+                for text in re.split("([0-9]+)", x.name)
+            ],
+        )
+        val_tiles = sorted(
+            val_tiles,
+            key=lambda x: [
+                int(text) if text.isdigit() else text.lower()
+                for text in re.split("([0-9]+)", x.name)
+            ],
+        )
 
-        self.process_save(train_tiles,train_path)
-        
-        self.process_save(val_tiles,val_path)
-            
+        self.process_save(train_tiles, train_path)
+
+        self.process_save(val_tiles, val_path)
+
     def setup(self, stage: str = None, seed=1024):
         """
         Create self.train_dataset and self.val_dataset.0000ff
@@ -230,20 +246,18 @@ class ESDDataModule(pl.LightningDataModule):
         gen.manual_seed(seed)
 
         train = DSE(
-            root_dir= self.processed_dir / 'Train',
+            root_dir=self.processed_dir / "Train",
             selected_bands=self.selected_bands,
             transform=self.transform,
-            
         )
         val = DSE(
-            root_dir= self.processed_dir / 'Val',
+            root_dir=self.processed_dir / "Val",
             selected_bands=self.selected_bands,
             transform=self.transform,
         )
 
         self.train_dataset = train
         self.val_dataset = val
-
 
     def train_dataloader(self):
         """
@@ -256,7 +270,7 @@ class ESDDataModule(pl.LightningDataModule):
             collate_fn=collate_fn,
             num_workers=7,
             shuffle=True,
-            persistent_workers=True
+            persistent_workers=True,
         )
 
     def val_dataloader(self):
@@ -264,11 +278,11 @@ class ESDDataModule(pl.LightningDataModule):
         Create and return a torch.utils.data.DataLoader with
         self.val_dataset
         """
-        
+
         return DataLoader(
             dataset=self.val_dataset,
             batch_size=self.batch_size,
             collate_fn=collate_fn,
             num_workers=7,
-            persistent_workers=True
+            persistent_workers=True,
         )
