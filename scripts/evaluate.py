@@ -18,7 +18,7 @@ from pytorch_lightning.callbacks import (
     RichProgressBar,
     RichModelSummary
 )
-from scripts.evaluate_config import EvalConfig
+#from scripts.evaluate_config import EvalConfig
 from src.esd_data.datamodule import ESDDataModule
 from src.models.supervised.satellite_module import ESDSegmentation
 from src.preprocessing.subtile_esd_hw02 import Subtile
@@ -36,13 +36,13 @@ import tifffile
 class EvalConfig:
     processed_dir: str | os.PathLike = root / 'data/processed/4x4'
     raw_dir: str | os.PathLike = root / 'data/raw/Train'
-    results_dir: str | os.PathLike = root / 'data/predictions' / "UNet"
+    results_dir: str | os.PathLike = root / 'data/predictions' / "UNetNoW" 
     selected_bands: None = None
     tile_size_gt: int = 4
     batch_size: int = 8
     seed: int = 12378921
     num_workers: int = 11
-    model_path: str | os.PathLike = root / "models" / "UNet" / "last-v3.ckpt"
+    model_path: str | os.PathLike = root / "models" / "UNet" / "last-v37.ckpt"
 
 
 def main(options):
@@ -54,10 +54,11 @@ def main(options):
             options for the experiment
     """
     # Load datamodule
+    options.selected_bands = { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
     datamodule = ESDDataModule(
         processed_dir = options.processed_dir,
         raw_dir = options.raw_dir,
-        selected_bands = {'sentinel1': ['VV', 'VH']},
+        selected_bands = options.selected_bands,
         tile_size_gt = options.tile_size_gt,
         batch_size = options.batch_size,
         seed = options.seed
@@ -78,22 +79,13 @@ def main(options):
 
     # run the validation loop with trainer.validate
     trainer.validate(model, datamodule.val_dataloader())
-    
-    # run restitch_and_plot
-        
-    # run restitch_and_plot 
-
-    # for every subtile in options.processed_dir/Val/subtiles
-    # run restitch_eval on that tile followed by picking the best scoring class
-
-
-    # save the file as a tiff using tifffile
-    # save the file as a png using matplotlib
-    
+   
     range_x = (0,16//options.tile_size_gt)
     range_y = (0,16//options.tile_size_gt)
     
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("Settlements", np.array(['#ff0000', '#0000ff', '#ffff00', '#b266ff']), N=4)
+
+    #for each of the parent tiles in the validation data print predicted results next to ground truth
     for parent_tile_id in tiles:
         restitch_and_plot(
             options = options,
