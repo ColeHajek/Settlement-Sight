@@ -19,7 +19,7 @@ def main():
     sys.path.append(root)
     print(f"Added {root} to path.")
 
-    # run this code only after you have already created the subtiles in the directory "data/processed/Train/subtiles"
+    # Run this code only after you have already created the subtiles in the directory "data/processed/Train/subtiles"
     stitched_sentinel2 = restitch(
         Path(root / "data/processed/Train/subtiles"),
         "sentinel2",
