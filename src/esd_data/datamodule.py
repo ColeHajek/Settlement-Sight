@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
-import pytorch_lightning as pl  # noqa
-import torch  # noqa
+import pytorch_lightning as pl
+import torch
 from sklearn.model_selection import train_test_split
-from torch import Generator  # noqa
-from torch.utils.data import DataLoader  # noqa
-from torchvision import transforms  # noqa
-from tqdm import tqdm  # noqa
+from torch import Generator
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from tqdm import tqdm
 
 from src.esd_data.augmentations import (
     AddNoise,
@@ -33,8 +33,8 @@ from ..preprocessing.preprocess_sat import (
     preprocess_sentinel2,
     preprocess_viirs,
 )
-from ..preprocessing.subtile_esd_hw02 import grid_slice  # noqa
-from .dataset import DSE  # noqa
+from ..preprocessing.subtile_esd_hw02 import grid_slice
+from .dataset import DSE
 
 
 def collate_fn(batch):
@@ -98,9 +98,7 @@ class ESDDataModule(pl.LightningDataModule):
         # Seed for reproducibility in transformations
         pl.seed_everything(self.seed)
 
-        # set transform to a composition of the following transforms: AddNoise, Blur, RandomHFlip, RandomVFlip, ToTensor
-        # utilize the RandomApply transform to apply each of the transforms with a probability of 0.5
-
+        # Create transforms
         self.transform = transforms.Compose(
             [
                 transforms.RandomApply([AddNoise()], p=0.5),
@@ -167,16 +165,16 @@ class ESDDataModule(pl.LightningDataModule):
 
     def process_save(self, tiles, path):
         for tile in tiles:
-            # call __load_and_preprocess to load and preprocess the data for all satellite types
+            # Load and preprocess the data for all satellite types
             processed_data = self.__load_and_preprocess(tile_dir=tile)
 
-            # grid slice the data with the given tile_size_gt
+            # Grid slice the data with the given tile_size_gt
             subtiles = grid_slice(
                 satellite_stack=processed_data[0],
                 metadata_stack=processed_data[1],
                 tile_size_gt=self.tile_size_gt,
             )
-            # save each subtile
+            # Save each subtile
             for subtile in subtiles:
                 subtile.save(dir=path)
 
@@ -190,30 +188,30 @@ class ESDDataModule(pl.LightningDataModule):
             - for each resulting subtile
                 - save the subtile data to self.processed_dir
         """
-        # if the processed_dir does not exist, process the data and create
+        # If the processed_dir does not exist, process the data and create
         # subtiles of the parent image to save
         if Path(self.processed_dir).exists():
             return
 
-        # create "data/processed/nxn/" directory
+        # Create "data/processed/nxn/" directory
         self.processed_dir.mkdir(parents=True, exist_ok=True)
 
         train_path = Path(self.processed_dir / "Train")
         train_path.mkdir(parents=True, exist_ok=True)
 
-        # create data/processed/nxn/Val
+        # Create data/processed/nxn/Val
         val_path = Path(self.processed_dir / "Val")
         val_path.mkdir(parents=True, exist_ok=True)
 
-        # fetch all the parent tiles in the raw_dir
+        # Fetch all the parent tiles in the raw_dir
         subdirectories = [d for d in self.raw_dir.iterdir() if d.is_dir()]
 
-        # randomly split the directories into train and val
+        # Randomly split the directories into train and val
         train_tiles, val_tiles = train_test_split(
             subdirectories, test_size=0.2, train_size=0.8, random_state=seed
         )
 
-        # sort the subdirectories
+        # Sort the subdirectories
         train_tiles = sorted(
             train_tiles,
             key=lambda x: [
