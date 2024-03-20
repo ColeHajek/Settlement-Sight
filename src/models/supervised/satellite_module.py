@@ -33,9 +33,6 @@ class ESDSegmentation(pl.LightningModule):
         self.class_weights = class_weights
         self.learning_rate = learning_rate
 
-        print("Starting Learning rate:",self.learning_rate)
-        print("Class_weights:",self.class_weights)
-
         if model_type == "SegmentationCNN":
             self.model = SegmentationCNN(in_channels,out_channels, **model_params)
         elif model_type == "UNet":
