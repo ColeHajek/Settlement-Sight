@@ -31,7 +31,7 @@ class ESDConfig:
     Please make sure to use the correct types and default values for the parameters
     and that the path for processed_dir contain the tiles you would like 
     """
-    processed_dir: str | os.PathLike = root / 'data/processed/4x4' #
+    processed_dir: str | os.PathLike = root / 'data/processed/4x4'
     raw_dir: str | os.PathLike = root / 'data/raw/Train'
     selected_bands: None = None 
     model_type: str = "UNet"
@@ -81,12 +81,6 @@ def calculate_class_weights(dataset):
     )
 
     return true_class_weights
-
-# potential band combinations that could be good    
-#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["4","5","6"]}
-#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["3","4","5","6","7"]}
-#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
-#{ "viirs_maxproj": ["0"],"viirs": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
 
 
 def train(options: ESDConfig):
