@@ -36,8 +36,8 @@ class ESDConfig:
     selected_bands: None = None 
     model_type: str = "UNet"
     tile_size_gt: int = 4
-    batch_size: int = 8
-    max_epochs: int = 30
+    batch_size: int = 16
+    max_epochs: int = 10
     seed: int = 12378921
     learning_rate: float = 0.001
     num_workers: int = 11
@@ -46,9 +46,9 @@ class ESDConfig:
     in_channels: int = 45
     out_channels: int = 4
     depth: int = 2
-    n_encoders: int = 2
-    embedding_size: int = 64
-    pool_sizes: str = "5,5,2"
+    n_encoders: int = 3
+    embedding_size: int = 128
+    pool_sizes: str = "5,5,2" # List[int] = [5,5,2]
     kernel_size: int = 3
     scale_factor: int = 50
     wandb_run_name: str | None = None
@@ -56,26 +56,7 @@ class ESDConfig:
     weights = True
     model_path: str | os.PathLike = root / "models" / "UNet" / "last.ckpt"
 
-'''
-#Previous method of getting class_weights
-def calculate_class_weights(dataset):
-    # Count the frequencies of each class in the dataset
-    class_frequencies = dataset.count_frequencies()
-    
-    # Adjust the class labels if necessary (e.g., subtract 1 if your class labels start from 1 instead of 0)
-    class_frequencies = {int(key) - 1: value for key, value in class_frequencies.items()}
-    
-    # Sort the class frequencies based on class indices
-    sorted_class_frequencies = {k: class_frequencies[k] for k in sorted(class_frequencies)}
-    
-    # Calculate the inverse of each class frequency
-    # If a frequency is zero (indicating no samples for a class), handle it to avoid division by zero
-    print("Class Frequencies:",sorted_class_frequencies)
-    true_class_weights = torch.tensor([1000.0 / value if value != 0 else 0 for value in sorted_class_frequencies.values()], dtype=torch.float)
-    #sum_weights = torch.sum(true_class_weights)
-    #normalized_weights = true_class_weights / sum_weights
-    return true_class_weights
-    '''
+
 
 def calculate_class_weights(dataset):
     # Count the frequencies of each class in the dataset
@@ -100,12 +81,6 @@ def calculate_class_weights(dataset):
     )
 
     return true_class_weights
-
-# potential band combinations that could be good    
-#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["4","5","6"]}
-#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["04","08","11"],"landsat":["3","4","5","6","7"]}
-#{ "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
-#{ "viirs_maxproj": ["0"],"viirs": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
 
 
 def train(options: ESDConfig):
@@ -134,15 +109,25 @@ def train(options: ESDConfig):
     options.selected_bands = { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
    
     # initiate the ESDDatamodule
-    datamodule = ESDDataModule(options.processed_dir, options.raw_dir,
-                              options.selected_bands, options.tile_size_gt,
-                               options.batch_size, options.seed)
-
-    # make sure to prepare_data in case the data has not been preprocessed
+    datamodule = ESDDataModule(
+        options.processed_dir,
+        options.raw_dir,
+        options.selected_bands,
+        options.tile_size_gt,
+        options.batch_size,
+        options.seed
+        )
+    #current val set has tiles: 4, 13, 16, 23, 24, 29, 30, 35, 55, 56, 59, 60
+    
+    #preprocess data and set up modules if not already done
     datamodule.prepare_data()
     datamodule.setup()
 
-    true_class_weights = calculate_class_weights(datamodule.train_dataset)
+    #if using inverse frequency 
+    if options.weights:
+        true_class_weights = calculate_class_weights(datamodule.train_dataset)
+    else:
+        true_class_weights = None
 
     train_dataloader = datamodule.train_dataloader()
     val_dataloader = datamodule.val_dataloader()
@@ -155,9 +140,9 @@ def train(options: ESDConfig):
         "dataset": "IEEE sat",
         "epochs": options.max_epochs,
     }
-    # initialize the ESDSegmentation module
+   
     
-    #Load model or create new one
+    #Load ESD Segmentation model or create new one
     if options.load_from_chkpt:
         model = ESDSegmentation.load_from_checkpoint(
             checkpoint_path = str(options.model_path),
@@ -178,8 +163,7 @@ def train(options: ESDConfig):
             model_params = params
         )
     wb_logger.watch(model)
-    # Use the following callbacks, they're provided for you,
-    # but you may change some of the settings
+    
     # ModelCheckpoint: saves intermediate results for the neural network
     # in case it crashes
     # LearningRateMonitor: logs the current learning rate on weights and biases
@@ -201,9 +185,7 @@ def train(options: ESDConfig):
         RichModelSummary(max_depth=3),
     ]
 
-    # create a pytorch Trainer
-    # see pytorch_lightning.Trainer
-    # make sure to use the options object to load it with the correct options
+    
     trainer = Trainer(
         logger=wb_logger,
         max_epochs=options.max_epochs,
@@ -215,8 +197,7 @@ def train(options: ESDConfig):
         enable_progress_bar=True
     )
 
-    # run trainer.fit
-    # make sure to use the datamodule option
+    #look into using the datamodule = datamodule option for trainer.fit
     trainer.fit(model, train_dataloader,val_dataloader)
 
 if __name__ == '__main__':

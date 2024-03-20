@@ -8,11 +8,7 @@ from pathlib import Path
 from typing import List, Tuple
 from PIL import Image
 
-from src.preprocessing.subtile_esd_hw02 import restitch, grid_slice
-from scripts.evaluate_config import EvalConfig
-from scripts.evaluate_config import ESDDataModule
-from scripts.evaluate_config import ESDSegmentation
-
+from src.preprocessing.subtile_esd_hw02 import restitch
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,24 +18,22 @@ from src.preprocessing.subtile_esd_hw02 import TileMetadata, Subtile
 
 def get_subtile_preds(subtile_path,datamodule,model):
     tile_name = subtile_path.name            
-    # find the tile in the datamodule 
-    idx = -1
-    for i in range(len(datamodule.val_dataset.tiles)):
-        if datamodule.val_dataset.tiles[i].name == tile_name:
+    # find the index for the tile in the datamodule 
+    idx = None
+    for i, tile in enumerate(datamodule.val_dataset.tiles):
+        if tile.name == tile_name:
             idx = i
 
-    if idx==-1:
+    if idx is None:
         raise ValueError(f"Tile {tile_name} not found in dataset.")
     
-    X, y, subtile_metadata = datamodule.val_dataset.__getitem__(idx) #FIXME better if we don't hardcode val_dataset but works for now
+    X, y, subtile_metadata = datamodule.val_dataset.__getitem__(idx) 
 
-
+    #ensure X and y are in proper tensor format
     X_tensor = torch.tensor(X, dtype=torch.float32)
     y_tensor = torch.tensor(y, dtype=torch.int64)
 
-    # evaluate the tile with the model
-    # You need to add a dimension of size 1 at dim 0 so that
-    # some CNN layers work
+    # You need to add a dimension of size 1 at dim 0 so that some CNN layers work
     # i.e., (batch_size, channels, width, height) with batch_size = 1
     X_tensor = X_tensor.unsqueeze(0)
 
@@ -72,11 +66,10 @@ def restitch_and_plot(options, datamodule, model, parent_tile_id, satellite_type
         satellite_type: str
         rgb_bands: List[int]
     """
-    #raise NotImplementedError # Complete this function using the code snippets below. Do not forget to remove this line.
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("Settlements", np.array(['#ff0000', '#0000ff', '#ffff00', '#b266ff']), N=4)
     fig, axs = plt.subplots(nrows=1, ncols=3)
     
-        # 1. Get sat imaging data
+    # 1. Get satallite visual data
     sat_path = Path(options.processed_dir/"Val"/"subtiles")
     restitch_len = 16//options.tile_size_gt
     stitched_sat, _ = restitch(sat_path,satellite_type,parent_tile_id,(0,restitch_len),(0,restitch_len))
@@ -88,18 +81,18 @@ def restitch_and_plot(options, datamodule, model, parent_tile_id, satellite_type
     axs[0].imshow(stitched_RGB)
 
 
-        # 2. Get the ground truth data
+    # 2. Get the ground truth data
     gt_path = Path(options.raw_dir/ parent_tile_id/'groundTruth.tif')
     gt_arr = np.array(Image.open(gt_path))
 
     #subtract one from the original values to correspond to predicted value 0-3 indexing
     gt_arr = np.subtract(gt_arr,1)
+
     axs[1].set_title("Ground Truth")
     axs[1].imshow(gt_arr,cmap=cmap, vmin=-0.5, vmax=3.5)
     im = axs[1].imshow(gt_arr,cmap=cmap, vmin=-0.5, vmax=3.5)
 
-        # 3. Get prediction data
-    #axs[2] instructions
+    # 3. Get prediction data
     full_tile_preds = np.zeros((16,16))
     tile_size = options.tile_size_gt
     for x in range(restitch_len):
@@ -108,14 +101,6 @@ def restitch_and_plot(options, datamodule, model, parent_tile_id, satellite_type
             subtile_pred, _ = get_subtile_preds(st_path,datamodule,model)
             full_tile_preds[x*tile_size:(x+1)*tile_size,y*tile_size:(y+1)*tile_size] = subtile_pred
 
-
-    #make predictions = np.zeros of dimension 16x16
-    #for col in gt
-    #for row in col
-    
-    #get predictions[col,row]
-    #axs[2].set_title("Predictions")
-    #axs[2].imshow(predictions,cmap=cmap, vmin = -0.5, vmax = 3.5) 
 
     axs[2].set_title("Model Predictions")
     axs[2].imshow(full_tile_preds,cmap=cmap, vmin=-0.5, vmax=3.5)
@@ -131,7 +116,7 @@ def restitch_and_plot(options, datamodule, model, parent_tile_id, satellite_type
     cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
     cbar = fig.colorbar(im, cax=cbar_ax)
     cbar.set_ticks([0,1,2,3])
-    cbar.set_ticklabels(['Sttlmnts Wo Elec', 'No Sttlmnts Wo Elec', 'Sttlmnts W Elec', 'No Sttlmnts W Elec'])
+    cbar.set_ticklabels(['Sets, No Elec', 'No Sets, No Elec', 'Sets, W/ Elec', 'No Sets, W/ Elec'])
     
     if image_dir is None:
         plt.show()

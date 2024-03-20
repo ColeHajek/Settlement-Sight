@@ -11,12 +11,14 @@ import os
 from argparse import ArgumentParser
 from dataclasses import dataclass
 
-import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
-import pytorch_lightning as pl
+from pathlib import Path
 
-from scripts.evaluate_config import EvalConfig
+from pytorch_lightning.callbacks import (
+    LearningRateMonitor,
+    ModelCheckpoint,
+    RichProgressBar,
+    RichModelSummary
+)
 from src.esd_data.datamodule import ESDDataModule
 from src.models.supervised.satellite_module import ESDSegmentation
 from src.visualization.restitch_plot import restitch_and_plot, restitch_eval
@@ -24,15 +26,19 @@ from src.visualization.restitch_plot import restitch_and_plot, restitch_eval
 
 @dataclass
 class EvalConfig:
-    processed_dir: str | os.PathLike = root / "data/processed/4x4"
-    raw_dir: str | os.PathLike = root / "data/raw/Train"
-    results_dir: str | os.PathLike = root / "data/predictions" / "UNet"
+
+    processed_dir: str | os.PathLike = root / 'data/processed/4x4'
+    raw_dir: str | os.PathLike = root / 'data/raw/Train'
+    results_dir: str | os.PathLike = root / 'data/predictions' / "UNetNoW" 
+
     selected_bands: None = None
     tile_size_gt: int = 4
     batch_size: int = 8
     seed: int = 12378921
     num_workers: int = 11
-    model_path: str | os.PathLike = root / "models" / "UNet" / "last-v4.ckpt"
+
+    model_path: str | os.PathLike = root / "models" / "UNet" / "last-v37.ckpt"
+
 
 
 def main(options):
@@ -44,20 +50,15 @@ def main(options):
             options for the experiment
     """
     # Load datamodule
-    options.selected_bands = {
-        "viirs_maxproj": ["0"],
-        "sentinel1": ["VV", "VH"],
-        "sentinel2": ["02", "03", "08", "11", "12"],
-        "landsat": ["5", "6", "7", "8"],
-    }
 
+    options.selected_bands = { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
     datamodule = ESDDataModule(
-        options.processed_dir,
-        options.raw_dir,
-        options.selected_bands,
-        options.tile_size_gt,
-        options.batch_size,
-        options.seed,
+        processed_dir = options.processed_dir,
+        raw_dir = options.raw_dir,
+        selected_bands = options.selected_bands,
+        tile_size_gt = options.tile_size_gt,
+        batch_size = options.batch_size,
+        seed = options.seed
     )
     tiles = get_parent_tiles(str(options.processed_dir / "Val" / "subtiles"))
 
@@ -78,22 +79,13 @@ def main(options):
     # run the validation loop with trainer.validate
     trainer.validate(model, datamodule.val_dataloader())
 
-    # run restitch_and_plot
+    range_x = (0,16//options.tile_size_gt)
+    range_y = (0,16//options.tile_size_gt)
+    
+    cmap = matplotlib.colors.LinearSegmentedColormap.from_list("Settlements", np.array(['#ff0000', '#0000ff', '#ffff00', '#b266ff']), N=4)
 
-    # run restitch_and_plot
+    #for each of the parent tiles in the validation data print predicted results next to ground truth
 
-    # for every subtile in options.processed_dir/Val/subtiles
-    # run restitch_eval on that tile followed by picking the best scoring class
-
-    # save the file as a tiff using tifffile
-    # save the file as a png using matplotlib
-
-    range_x = (0, 16 // options.tile_size_gt)
-    range_y = (0, 16 // options.tile_size_gt)
-
-    cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
-        "Settlements", np.array(["#ff0000", "#0000ff", "#ffff00", "#b266ff"]), N=4
-    )
     for parent_tile_id in tiles:
         restitch_and_plot(
             options=options,

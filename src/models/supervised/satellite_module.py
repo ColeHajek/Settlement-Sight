@@ -1,11 +1,10 @@
 import torch
 import pytorch_lightning as pl
-from torch import nn
+
 from torch.nn import functional as F
-import torchmetrics
-from torchmetrics import Accuracy,AUROC,F1Score
-from torchmetrics.classification import MulticlassAccuracy, MulticlassAUROC, MulticlassF1Score
-from torchmetrics.detection import IntersectionOverUnion as IoU
+from torchmetrics import Accuracy
+from torchmetrics.classification import MulticlassAUROC, MulticlassF1Score
+
 from src.models.supervised.segmentation_cnn import SegmentationCNN
 from src.models.supervised.unet import UNet
 from src.models.supervised.resnet_transfer import FCNResnetTransfer
@@ -33,7 +32,8 @@ class ESDSegmentation(pl.LightningModule):
         self.save_hyperparameters()
         self.class_weights = class_weights
         self.learning_rate = learning_rate
-        print("Learning rate:",self.learning_rate)
+
+        print("Starting Learning rate:",self.learning_rate)
         print("Class_weights:",self.class_weights)
 
         if model_type == "SegmentationCNN":
@@ -229,22 +229,16 @@ class ESDSegmentation(pl.LightningModule):
         
         return loss
     
+    #if it has been 2 epochs and val_loss hasn't decreased then decrease the learning rate to better find a minima
     def configure_optimizers(self):
-        """
-        Loads and configures the optimizer. See torch.optim.Adam
-        for a default option.
-
-        Outputs:
-            optimizer: torch.optim.Optimizer
-                Optimizer used to minimize the loss
-        """
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)  # Example scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2, verbose=True)
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
                 'scheduler': scheduler,
-                'interval': 'epoch',  # or 'step' for step-wise updates
+                'interval': 'epoch',
                 'frequency': 1,
+                'monitor': 'val_loss',  # Make sure to log 'val_loss' in your validation_step
             }
         }

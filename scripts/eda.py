@@ -25,22 +25,31 @@ from src.visualization.plot_utils import (
 )
 
 if __name__ == "__main__":
-
-    tile1_dir = os.path.join(root, 'data', 'raw', 'Train', 'Tile4')
+    tile_num = 4
+    aug_tile_num = tile_num + 60
+    tile_dir = os.path.join(root, 'data', 'raw', 'Train', 'Tile60')
+    print(tile_dir)
+    aug_tile_dir = os.path.join(root, 'data', 'raw', 'Train', 'Tile64')
     train_dir = os.path.join(root, 'data', 'raw', 'Train')
-    save_plots_dir = os.path.join(root, 'plots')    
 
+    save_plots_dir = os.path.join(root, 'visualize')
+    save_aug_plots_dir = os.path.join(root, 'aug_visualize')
+    
     #ensure directory for saving plots exists
     plt_path = Path(save_plots_dir)
+    aug_plt_path = Path(save_aug_plots_dir)
     if not plt_path.exists():
         plt_path.mkdir(parents=True,exist_ok = True)
+    if not aug_plt_path.exists():
+        aug_plt_path.mkdir(parents=True,exist_ok = True)
 
-    testViirs = False
+    test_aug = False
+    testViirs = True
     testHistograms = False
-    testS1 = False
-    testLandsat = True
+    testS1 = True
+    testLandsat = False
     testS2 = False
-    testGT = False
+    testGT = True
 
 
     if testHistograms:
@@ -66,7 +75,7 @@ if __name__ == "__main__":
         print("landsat hist done")
 
     if testViirs:
-        viirs_stack, metadata = load_satellite(tile1_dir, "viirs")
+        viirs_stack, metadata = load_satellite(tile_dir, "viirs")
         max_proj_viirs = maxprojection_viirs(viirs_stack).squeeze(0)
     
         plot_viirs(max_proj_viirs, "VIIRS Max Projection", image_dir=save_plots_dir)
@@ -76,17 +85,22 @@ if __name__ == "__main__":
         print("plot_viirs_by_date done")
 
     if testS1:
-        sentinel1_stack, s1_metadata = load_satellite(tile1_dir, "sentinel1")
+        sentinel1_stack, s1_metadata = load_satellite(tile_dir, "sentinel1")
         plot_satellite_by_bands( sentinel1_stack, s1_metadata, [['VV', 'VH', 'VV-VH']], "sentinel1", image_dir=save_plots_dir)
         print("plot_s1 done")
     
     if testS2:
-        sentinel2_stack, s2_metadata = load_satellite(tile1_dir, "sentinel2")
+        sentinel2_stack, s2_metadata = load_satellite(tile_dir, "sentinel2")
         plot_satellite_by_bands(sentinel2_stack, s2_metadata, [['04', '03', '02'],['01'],['02'],['03'],['04'],['05'],['06'],['07'],['08'],['09'],['11'],['12'],['8A']], "sentinel2", image_dir=save_plots_dir)
         print("plot s2 done")
 
+        #sentinel2_stack, s2_metadata = load_satellite(aug_tile_dir, "sentinel2")
+        #plot_satellite_by_bands(sentinel2_stack, s2_metadata, [['04', '03', '02'],['01'],['02'],['03'],['04'],['05'],['06'],['07'],['08'],['09'],['11'],['12'],['8A']], "sentinel2", image_dir=save_aug_plots_dir)
+        #print("plot s2 done")
+
+
     if testLandsat:
-        landsat_stack, file_names = load_satellite(tile1_dir, "landsat")
+        landsat_stack, file_names = load_satellite(tile_dir, "landsat")
              
         plot_satellite_by_bands(landsat_stack, file_names, [['4', '3', '2'], ['1'],['2'],['3'],['4'],['5'],['6'],['7'],['9'],['10'],['11']], "landsat", image_dir=save_plots_dir)
         print("plot landsat done")
@@ -94,7 +108,7 @@ if __name__ == "__main__":
         # # 5, 4, 3 color infrared ->
         
     if testGT:    
-        gt_stack, gt_metadata = load_satellite(tile1_dir, "gt")
+        gt_stack, gt_metadata = load_satellite(tile_dir, "gt")
         plot_ground_truth(gt_stack, "Ground Truth", image_dir=save_plots_dir)
         print("plot gt done")
     
