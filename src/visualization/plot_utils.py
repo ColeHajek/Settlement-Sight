@@ -1,14 +1,11 @@
 """ This module contains functions for plotting satellite images. """
 import os
 from pathlib import Path
-from typing import List
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 
 from ..preprocessing.file_utils import Metadata
-#from ..preprocessing.file_utils import print_list_metadata
-#from ..preprocessing.file_utils import print_single_metadata
 from ..preprocessing.preprocess_sat import quantile_clip
 from ..preprocessing.preprocess_sat import minmax_scale
 from ..preprocessing.preprocess_sat import (
@@ -18,7 +15,29 @@ from ..preprocessing.preprocess_sat import (
     preprocess_viirs
 )
 
-#DONE
+import sys
+import pyprojroot
+from tqdm import tqdm
+from typing import Tuple, Dict, List
+
+from copy import deepcopy
+root = pyprojroot.here()
+sys.path.append(str(root))
+
+import pyprojroot
+root = pyprojroot.here()
+sys.path.append(root)
+from src.esd_data.dataset import DSE
+from src.esd_data.augmentations import (
+    AddNoise,
+    Blur,
+    RandomHFlip,
+    RandomVFlip,
+    ToTensor
+)
+from torchvision import transforms
+from src.preprocessing.subtile_esd import restitch
+
 def plot_viirs_histogram(
         viirs_stack: np.ndarray,
         image_dir: None | str | os.PathLike = None,
@@ -60,7 +79,6 @@ def plot_viirs_histogram(
         plt.close()
     return
 
-#DONE
 def plot_sentinel1_histogram(
         sentinel1_stack: np.ndarray,
         metadata: List[Metadata],
@@ -105,30 +123,7 @@ def plot_sentinel1_histogram(
         plt.savefig(Path(image_dir) / "sentinel1_histogram.png")
         plt.close()
     return
-'''
-def plot_sentinel2_histogram(sentinel2_stack: np.ndarray, metadata: List[List[Metadata]], image_dir: None | str | os.PathLike = None, n_bins=20) -> None:
-    sentinel2_stack = preprocess_data(sentinel2_stack,"sentinel2")
 
-    # Compute histogram without flattening the entire array
-    print(sentinel2_stack.shape)
-    hist, bin_edges = np.histogram(sentinel2_stack, bins=n_bins, range=[0, np.max(sentinel2_stack)])
-
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    plt.bar(bin_edges[:-1], hist, width=np.diff(bin_edges), color='blue', alpha=0.7)
-    plt.title('Sentinel2 Histogram')
-    plt.xlabel('Pixel Intensity')
-    plt.ylabel('Frequency')
-    plt.grid(True)
-
-    # Save or show the image
-    if image_dir is None:
-        plt.show()
-    else:
-        Path(image_dir).mkdir(parents=True, exist_ok=True)
-        plt.savefig(Path(image_dir) / "sentinel2_histogram.png")
-        plt.close()
-'''
 def plot_sentinel2_histogram(
         sentinel2_stack: np.ndarray,
         metadata: List[List[Metadata]],
@@ -249,7 +244,6 @@ def plot_gt_counts(ground_truth: np.ndarray,
         plt.close()
     return
 
-#DONE
 def plot_viirs(
         viirs: np.ndarray, plot_title: str = '',
         image_dir: None | str | os.PathLike = None
@@ -282,7 +276,6 @@ def plot_viirs(
         plt.close()
     return
 
-#DONE
 def plot_viirs_by_date(
         viirs_stack: np.array,
         metadata: List[List[Metadata]],
@@ -445,8 +438,6 @@ def create_rgb_composite_s1(
         plt.close()
 
     return
-
-
 
 def validate_band_identifiers(
           bands_to_plot: List[List[str]],
@@ -641,4 +632,85 @@ def plot_ground_truth(
         plt.savefig(Path(image_dir) / "ground_truth.png")
         plt.close()
     return
+
+def plot_restitched_from_tiles(subtile_dir: str | os.PathLike, 
+                               satellite_type: str, 
+                               tile_id: str, 
+                               x_range: Tuple[int, int], 
+                               y_range: Tuple[int, int], 
+                               bands: List[str] = ["04", "03", "02"],
+                               image_dir: str | os.PathLike | None = None):
+    stitched, metadata = restitch(subtile_dir, satellite_type, tile_id, x_range, y_range)
+    satellite_bands = metadata[0][0].satellites[satellite_type].bands
+    bands_index = []
+    for b in bands:
+        bands_index.append(satellite_bands.index(b))
     
+    plt.title(f"{tile_id} restitched")
+    plt.imshow(np.transpose(stitched[0,bands_index,:,:], axes=(1,2,0)))
+
+    if image_dir is None:
+        plt.show()
+    else:
+        plt.savefig(Path(image_dir) / "restitched_tile.png")
+        plt.close()
+
+def plot_transforms(subtile_folder: str | os.PathLike, 
+                    data_idx: int,
+                    selected_bands: Dict[str, List[str]] = {"sentinel2": ["04", "03", "02"]},
+                    image_dir: str | os.PathLike | None = None):
+    transforms_to_apply = [
+                AddNoise(0, 0.5),
+                Blur(20),
+                RandomHFlip(p=1.0),
+                RandomVFlip(p=1.0)
+            ]
+
+    names = ["Noise", "Blur", "HFlip", "VFlip"]
+
+    fig, axs = plt.subplots(len(transforms_to_apply), 5)
+
+    for i, transform in enumerate(transforms_to_apply):
+        dataset = DSE(subtile_folder, 
+                    selected_bands=selected_bands,
+                    transform = transform)
+        X, y, metadata = dataset[data_idx]
+
+        X = X.reshape(4,3,200,200)
+
+        plt.suptitle(f"{metadata.parent_tile_id}, subtile ({metadata.x_gt}, {metadata.y_gt})")
+
+        for j in range(X.shape[0]):
+            axs[i, j].set_title(f"t = {j}, tr = {names[i]}")
+            axs[i, j].imshow(np.dstack([X[j,0],X[j,1],X[j,2]]))
+        axs[i, -1].set_title("Ground Truth")
+        axs[i, -1].imshow(y[0])
+
+    if image_dir is None:
+        plt.show()
+    else:
+        plt.savefig(Path(image_dir) / "restitched_tile.png")
+        plt.close()
+
+def plot_2D_scatter_plot(X_dim_red, y_flat, projection_name, image_dir: str | os.PathLike | None = None):
+    # Create a list of colors
+    colors = np.array(['#ff0000', '#0000ff', '#ffff00', '#b266ff'])
+    labels = ['Human Settlements Without Electricity', 'No Human Settlement Without Electricity', 'Human Settlements With Electricity', 'No Human Settlements with Electricity']
+    # plt.scatter(X_pca[:, 0], X_pca[:, 1], c=colors[y_flat[:, 0].astype(int)-1])
+    for i in range(len(colors)):
+        plt.scatter(X_dim_red[y_flat[:, 0].astype(int) == i+1, 0], X_dim_red[y_flat[:, 0].astype(int) == i+1, 1], c=colors[i], label=labels[i])
+    plt.xlabel(f"{projection_name} 1")
+    plt.ylabel(f"{projection_name} 2")
+    plt.title(f"{projection_name} projection of tiles")
+    plt.legend()
+
+    if image_dir is None:
+        plt.show()
+    else:
+        plt.savefig(Path(image_dir) / f"{projection_name}_scatterplot.png")
+        plt.close()
+
+if __name__ == "__main__":
+    plot_restitched_from_tiles(root/"data/processed/Train/subtiles", "sentinel2", "Tile1", (0,4), (0,4))
+
+    plot_transforms(root / 'data'/'processed'/'Train'/'subtiles', 0)

@@ -9,7 +9,7 @@ from src.models.unsupervised.dim_reduction import (
     perform_PCA,
     perform_UMAP
 )
-from src.visualization.plot_utils_hw02 import plot_2D_scatter_plot
+from src.visualization.plot_utils import plot_2D_scatter_plot
 
 root = pyprojroot.here()
 sys.path.append(str(root))
