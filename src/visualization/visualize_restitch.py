@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pyprojroot
 
-from src.preprocessing.subtile_esd_hw02 import restitch
+from src.preprocessing.subtile_esd import restitch
 
 root = pyprojroot.here()
 sys.path.append(str(root))

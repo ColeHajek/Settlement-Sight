@@ -10,7 +10,7 @@ import numpy as np
 import torch
 
 from src.esd_data.dataset import DSE  # Import your actual module where DSE is defined
-from src.preprocessing.subtile_esd_hw02 import (  # Import your actual module where Subtile and TileMetadata are defined
+from src.preprocessing.subtile_esd import (  # Import your actual module where Subtile and TileMetadata are defined
     SatelliteMetadata,
     Subtile,
     TileMetadata,

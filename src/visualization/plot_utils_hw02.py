@@ -22,7 +22,7 @@ from src.esd_data.augmentations import (
     ToTensor
 )
 from torchvision import transforms
-from src.preprocessing.subtile_esd_hw02 import restitch
+from src.preprocessing.subtile_esd import restitch
 from pathlib import Path
 
 def plot_restitched_from_tiles(subtile_dir: str | os.PathLike, 

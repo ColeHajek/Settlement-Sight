@@ -9,7 +9,7 @@ import numpy as np
 import pyprojroot
 from torch.utils.data import Dataset
 
-from ..preprocessing.subtile_esd_hw02 import Subtile, TileMetadata
+from ..preprocessing.subtile_esd import Subtile, TileMetadata
 
 sys.path.append(pyprojroot.here())
 

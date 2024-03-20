@@ -37,7 +37,7 @@ from src.preprocessing.preprocess_sat import (
     preprocess_sentinel2,
     preprocess_viirs,
 )
-from src.preprocessing.subtile_esd_hw02 import grid_slice
+from src.preprocessing.subtile_esd import grid_slice
 
 root = pyprojroot.here()
 sys.path.append(str(root))

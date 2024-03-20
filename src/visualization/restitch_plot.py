@@ -8,12 +8,12 @@ from pathlib import Path
 from typing import List, Tuple
 from PIL import Image
 
-from src.preprocessing.subtile_esd_hw02 import restitch
+from src.preprocessing.subtile_esd import restitch
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-from src.preprocessing.subtile_esd_hw02 import TileMetadata, Subtile
+from src.preprocessing.subtile_esd import TileMetadata, Subtile
 
 
 def get_subtile_preds(subtile_path,datamodule,model):

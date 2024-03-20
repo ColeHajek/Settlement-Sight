@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from src.esd_data.datamodule import ESDDataModule, collate_fn
 from src.esd_data.dataset import DSE
 from src.preprocessing.file_utils import Metadata
-from src.preprocessing.subtile_esd_hw02 import TileMetadata, SatelliteMetadata, Subtile
+from src.preprocessing.subtile_esd import TileMetadata, SatelliteMetadata, Subtile
 
 CURRENT_POINTS_TEST = 0
 MAX_POINTS_TEST = 20

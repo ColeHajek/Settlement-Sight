@@ -33,7 +33,7 @@ from ..preprocessing.preprocess_sat import (
     preprocess_sentinel2,
     preprocess_viirs,
 )
-from ..preprocessing.subtile_esd_hw02 import grid_slice
+from ..preprocessing.subtile_esd import grid_slice
 from .dataset import DSE
 
 
