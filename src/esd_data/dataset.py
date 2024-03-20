@@ -155,7 +155,7 @@ class DSE(Dataset):
 
         return selected_satellite_stack, new_metadata
 
-    def __getitem__(self, idx: int) -> tuple[np.ndarray, np.ndarray, TileMetadata]:
+    def __getitem__(self, idx: int,transform_all=False) -> tuple[np.ndarray, np.ndarray, TileMetadata]:
         """
         Loads subtile at index idx, then
             - selects bands
@@ -175,7 +175,7 @@ class DSE(Dataset):
             tile_metadata:
                 corresponding tile metadata
         """
-        # load the subtiles using the Subtile class in
+        # Load the subtiles using the Subtile class in
         # src/preprocessing/subtile_esd_hw02.py
         tile_path = self.tiles[idx]
         
@@ -185,17 +185,12 @@ class DSE(Dataset):
         subtile_instance = Subtile()
         loaded_subtile = subtile_instance.load(tile_path)
 
-        # call the __select_bands function to select the bands and satellites
+        # Select the bands and satellites
         selected_bands, selected_bands_metadata = self.__select_bands(loaded_subtile)
 
-        # stack the time dimension with the bands, this will treat the
-        # timestamps as bands for the model you may want to change this
-        # depending on your model and depending on which timestamps and
-        # bands you want to use
-
+        # Stack the time dimension with the bands
         aggregated_data = []
         for satellite_name, satellite_data in selected_bands.items():
-            #print("SatName: ",satellite_name)
             if satellite_name != "gt":  # Skip ground truth data
                 aggregated = self.__aggregate_time(satellite_data)
                 aggregated_data.append(aggregated)
@@ -211,12 +206,19 @@ class DSE(Dataset):
         y = np.zeros((1, gt.shape[-2], gt.shape[-1]))
         y[0, :, :] = gt[0, 0, :, :]
 
-        # change the range of y from 1-4 to 0-3 to conform with pytorch's zero indexing
+        # Change the range of y from 1-4 to 0-3 to conform with pytorch's zero indexing
         y -= 1
-        # if there is a transform, apply it to both X and y
-        if self.transform is not None and tile_number > 60:
-            transformed = self.transform({"X": X, "y": y})
-            X = transformed["X"]
-            y = transformed["y"]
+        # If there is a transform, apply it to both X and y
+        if self.transform is not None:
+            if transform_all:
+                # Apply transforms to all tiles
+                transformed = self.transform({"X": X, "y": y})
+                X = transformed["X"]
+                y = transformed["y"]
+            elif tile_number > 60:
+                # Else only apply transforms to half the tiles
+                transformed = self.transform({"X": X, "y": y})
+                X = transformed["X"]
+                y = transformed["y"]
 
         return X, y, selected_bands_metadata
