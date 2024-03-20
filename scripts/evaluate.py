@@ -2,6 +2,8 @@ import os
 import re
 import sys
 
+import numpy as np
+
 import pyprojroot
 import tifffile as tiff
 
@@ -13,6 +15,7 @@ from dataclasses import dataclass
 
 from pathlib import Path
 
+import pytorch_lightning as pl
 from pytorch_lightning.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
@@ -22,6 +25,9 @@ from pytorch_lightning.callbacks import (
 from src.esd_data.datamodule import ESDDataModule
 from src.models.supervised.satellite_module import ESDSegmentation
 from src.visualization.restitch_plot import restitch_and_plot, restitch_eval
+
+import matplotlib
+import matplotlib.pyplot as plt
 
 
 @dataclass
@@ -50,7 +56,6 @@ def main(options):
             options for the experiment
     """
     # Load datamodule
-
     options.selected_bands = { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
     datamodule = ESDDataModule(
         processed_dir = options.processed_dir,
@@ -64,19 +69,19 @@ def main(options):
 
     datamodule.setup()
 
-    # load model from checkpoint at options.model_path
+    # Load model from checkpoint at options.model_path
     print("options.model.path: ", options)
     model = ESDSegmentation.load_from_checkpoint(
         checkpoint_path=str(options.model_path)
     )
 
-    # set the model to evaluation mode (model.eval())
+    # Set the model to evaluation mode (model.eval())
     model.eval()
 
-    # instantiate pytorch lightning trainer
+    # Instantiate pytorch lightning trainer
     trainer = pl.Trainer()
 
-    # run the validation loop with trainer.validate
+    # Run the validation loop with trainer.validate
     trainer.validate(model, datamodule.val_dataloader())
 
     range_x = (0,16//options.tile_size_gt)
@@ -84,7 +89,7 @@ def main(options):
     
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("Settlements", np.array(['#ff0000', '#0000ff', '#ffff00', '#b266ff']), N=4)
 
-    #for each of the parent tiles in the validation data print predicted results next to ground truth
+    # For each of the parent tiles in the validation data print predicted results next to ground truth
 
     for parent_tile_id in tiles:
         restitch_and_plot(
