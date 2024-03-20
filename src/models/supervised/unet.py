@@ -81,25 +81,22 @@ class Decoder(nn.Module):
         6) Pass the concatenated tensor through a doubleconvhelper
         7) Return output
         """
-        # step 1: replace x1 with the upsampled version of x1
+        # Replace x1 with the upsampled version of x1
         x1 = self.up(x1)
-        # input is Channel Height Width, step 2
+       
+        # Input is Channel Height Width, step 2
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
 
-        # step 3
+        # Add padding
         x1 = pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
-        # if you have padding issues, see
-        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
-        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
         
-        # step 4 & 5: Concatenate x1 and x2
+        # Concatenate x1 and x2
         x = torch.cat([x2,x1],dim=1)
 
-        # step 6: Pass the concatenated tensor through a doubleconvhelper
+        # Pass the concatenated tensor through a doubleconvhelper
         x = self.double_conv(x)
-    
-        # step 7: return output
+
         return x
     
 class UNet(nn.Module):
@@ -167,9 +164,6 @@ class UNet(nn.Module):
         # you might skip this if your input and output sizes should match)
         self.downscale = nn.MaxPool2d(kernel_size=scale_factor)
 
-
-        #raise NotImplementedError
-
     def forward(self, x):
         """
             The image is passed through the encoder layers,
@@ -207,14 +201,3 @@ class UNet(nn.Module):
         x = self.downscale(x)
         
         return x
-        raise NotImplementedError
-
-'''
-self.encoders = nn.ModuleList()
-        self.encoders.append(Encoder(in_channels=in_channels,out_channels=embedding_size))
-        
-        
-        for _ in range(n_encoders-1):
-            self.encoders.append(Encoder(in_channels=embedding_size,out_channels=embedding_size*2))
-            embedding_size *=2
-'''
