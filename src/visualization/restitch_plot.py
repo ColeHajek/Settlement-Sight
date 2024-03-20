@@ -29,27 +29,24 @@ def get_subtile_preds(subtile_path,datamodule,model):
     
     X, y, subtile_metadata = datamodule.val_dataset.__getitem__(idx) 
 
-    #ensure X and y are in proper tensor format
+    # Ensure X and y are in proper tensor format
     X_tensor = torch.tensor(X, dtype=torch.float32)
     y_tensor = torch.tensor(y, dtype=torch.int64)
 
-    # You need to add a dimension of size 1 at dim 0 so that some CNN layers work
-    # i.e., (batch_size, channels, width, height) with batch_size = 1
     X_tensor = X_tensor.unsqueeze(0)
 
-    # make sure that the tile is in GPU memory, i.e., X = X.cuda()
+    # Run on GPU if available
     if torch.cuda.is_available():
         X_tensor = X_tensor.cuda()
         y_tensor = y_tensor.cuda()
 
-    # convert y to numpy array
     y = y_tensor.cpu().numpy()
 
-    # detach predictions from the gradient, move to cpu and convert to numpy
+    # Detach predictions from the gradient, move to cpu and convert to numpy
     with torch.no_grad():
         predictions = model.forward(X_tensor)
         predictions = torch.argmax(predictions,dim=1)
-        predictions = predictions.squeeze(0).cpu().numpy()      #might cause problems
+        predictions = predictions.squeeze(0).cpu().numpy()
 
     return predictions, y 
 
@@ -85,7 +82,7 @@ def restitch_and_plot(options, datamodule, model, parent_tile_id, satellite_type
     gt_path = Path(options.raw_dir/ parent_tile_id/'groundTruth.tif')
     gt_arr = np.array(Image.open(gt_path))
 
-    #subtract one from the original values to correspond to predicted value 0-3 indexing
+    # Subtract one from the original values to correspond to predicted value 0-3 indexing
     gt_arr = np.subtract(gt_arr,1)
 
     axs[1].set_title("Ground Truth")
@@ -105,13 +102,8 @@ def restitch_and_plot(options, datamodule, model, parent_tile_id, satellite_type
     axs[2].set_title("Model Predictions")
     axs[2].imshow(full_tile_preds,cmap=cmap, vmin=-0.5, vmax=3.5)
 
-    # make sure to use cmap=cmap, vmin=-0.5 and vmax=3.5 when running
-    # axs[i].imshow on the 1d images in order to have the correct 
-    # colormap for the images.
-    # On one of the 1d images' axs[i].imshow, make sure to save its output as 
-    # `im`, i.e, im = axs[i].imshow
     
-    # The following lines sets up the colorbar to the right of the images    
+    # Set up the colorbar to the right of the images    
     fig.subplots_adjust(right=0.8)
     cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
     cbar = fig.colorbar(im, cax=cbar_ax)
