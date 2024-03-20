@@ -28,7 +28,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         layers = []
         current_channels = in_channels
-        #in prepared data use os. 
+
         for _ in range(depth):
             conv_layer = nn.Conv2d(
                 in_channels=current_channels,
