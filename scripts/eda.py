@@ -94,9 +94,6 @@ if __name__ == "__main__":
         plot_satellite_by_bands(sentinel2_stack, s2_metadata, [['04', '03', '02'],['01'],['02'],['03'],['04'],['05'],['06'],['07'],['08'],['09'],['11'],['12'],['8A']], "sentinel2", image_dir=save_plots_dir)
         print("plot s2 done")
 
-        #sentinel2_stack, s2_metadata = load_satellite(aug_tile_dir, "sentinel2")
-        #plot_satellite_by_bands(sentinel2_stack, s2_metadata, [['04', '03', '02'],['01'],['02'],['03'],['04'],['05'],['06'],['07'],['08'],['09'],['11'],['12'],['8A']], "sentinel2", image_dir=save_aug_plots_dir)
-        #print("plot s2 done")
 
 
     if testLandsat:
@@ -104,8 +101,6 @@ if __name__ == "__main__":
              
         plot_satellite_by_bands(landsat_stack, file_names, [['4', '3', '2'], ['1'],['2'],['3'],['4'],['5'],['6'],['7'],['9'],['10'],['11']], "landsat", image_dir=save_plots_dir)
         print("plot landsat done")
-        # # 4, 3, 2 RGB -> 5, 4, 3
-        # # 5, 4, 3 color infrared ->
         
     if testGT:    
         gt_stack, gt_metadata = load_satellite(tile_dir, "gt")

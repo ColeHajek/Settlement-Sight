@@ -1,10 +1,10 @@
-### copy the raw data
-### add "aug" to the tile 
-### save to data/augmented/Train
 
 import os
 import shutil
 import re
+'''
+Duplicates all data in ./data/raw/Train
+'''
 
 source_dir = "./data/raw/Train"
 destination_dir = "./data/raw/Train"
@@ -14,7 +14,7 @@ if not os.path.exists(destination_dir):
 for _,dirs,_ in os.walk(source_dir):
     for dir in dirs:
         tile_number = re.findall(r'\d+',dir)[0]
-        new_number = int(tile_number) + 60
+        new_number = int(tile_number) + len(dirs)
         new_tile = re.sub(r'\d+', str(new_number),dir)
         destination_root = os.path.join(destination_dir, new_tile)
         destination_root

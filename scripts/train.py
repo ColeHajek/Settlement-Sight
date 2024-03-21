@@ -93,8 +93,8 @@ def train(options: ESDConfig):
     """
     # Initialize the weights and biases logger
     wb_logger = WandbLogger(
-        # set the wandb project where this run will be logged
-        project="thethundermen",
+        # Set the wandb project where this run will be logged
+        project=options.wandb_run_name,
         
         # track hyperparameters and run metadata
         config={
@@ -105,10 +105,9 @@ def train(options: ESDConfig):
         }
     )
 
-    #temporary hardcoding bands so i dont have to type them in terminal
+    # Optimal hand selected bands
     options.selected_bands = { "viirs_maxproj": ["0"],"sentinel1": ["VV", "VH"],"sentinel2":["02","03","04","08","11","12"],"landsat":["5","6","7","8"]}
    
-    # initiate the ESDDatamodule
     datamodule = ESDDataModule(
         options.processed_dir,
         options.raw_dir,
@@ -117,13 +116,11 @@ def train(options: ESDConfig):
         options.batch_size,
         options.seed
         )
-    #current val set has tiles: 4, 13, 16, 23, 24, 29, 30, 35, 55, 56, 59, 60
-    
-    #preprocess data and set up modules if not already done
+
     datamodule.prepare_data()
     datamodule.setup()
 
-    #if using inverse frequency 
+    # Add weights if weights exists 
     if options.weights:
         true_class_weights = calculate_class_weights(datamodule.train_dataset)
     else:
@@ -132,8 +129,7 @@ def train(options: ESDConfig):
     train_dataloader = datamodule.train_dataloader()
     val_dataloader = datamodule.val_dataloader()
     
-    # create a dictionary with the parameters to pass to the models
-
+    # Create parameters dict
     params = {
         "learning_rate": options.learning_rate,
         "architecture": options.model_type,
@@ -142,7 +138,7 @@ def train(options: ESDConfig):
     }
    
     
-    #Load ESD Segmentation model or create new one
+    # Load ESD Segmentation model or create new one
     if options.load_from_chkpt:
         model = ESDSegmentation.load_from_checkpoint(
             checkpoint_path = str(options.model_path),
@@ -151,7 +147,7 @@ def train(options: ESDConfig):
             out_channels = options.out_channels,
             learning_rate = options.learning_rate,
             class_weights = true_class_weights,
-            params = params  # Add other necessary parameters as needed
+            params = params
         )
     else:
         model = ESDSegmentation(
@@ -192,17 +188,16 @@ def train(options: ESDConfig):
         accelerator=options.accelerator,
         devices=options.devices,
         callbacks=callbacks,
-        log_every_n_steps=50, #adjustable
-        check_val_every_n_epoch=1, #check validation set every epoch
+        log_every_n_steps=50,
+        check_val_every_n_epoch=1,
         enable_progress_bar=True
     )
 
-    #look into using the datamodule = datamodule option for trainer.fit
     trainer.fit(model, train_dataloader,val_dataloader)
 
 if __name__ == '__main__':
     
-    # load dataclass arguments from yml file
+    # Load dataclass arguments from yml file
     
     config = ESDConfig()
     parser = ArgumentParser()
@@ -222,7 +217,6 @@ if __name__ == '__main__':
     parser.add_argument('--pool_sizes', help="A comma separated list of pool_sizes (CNN only)", type=str, default=config.pool_sizes)
     parser.add_argument('--kernel_size', help="Kernel size of the convolutions", type=int, default=config.kernel_size)
     parser.add_argument('--scale_factor', help="Scale factor between the labels and the image (Unet and Transfer Resnet)", type=int, default=config.scale_factor)
-    # --pool_sizes=5,5,2 to call it correctly
     
     parse_args = parser.parse_args()
     

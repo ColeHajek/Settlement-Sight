@@ -51,8 +51,8 @@ class Blur(object):
                 Has two keys, 'X' and 'y'.
                 Each of them has shape (bands, width, height)
         """
-        # sample must have X and y in a dictionary format
-        #  dimensions of img: (t, bands, tile_height, tile_width)
+        # Sample must have X and y in a dictionary format
+        # dimensions of img: (t, bands, tile_height, tile_width)
         if "X" not in sample:
             raise ValueError("The sample must have a key 'X'")
 

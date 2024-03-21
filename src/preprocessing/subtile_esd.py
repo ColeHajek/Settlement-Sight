@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Tuple, Dict
 from dataclasses import dataclass
 from copy import deepcopy
-from ..preprocessing.file_utils import Metadata
+from .file_utils import Metadata
 import json
 
 
@@ -77,12 +77,6 @@ class TileMetadata:
         with open(file_name, "r", encoding="utf-8") as infile:
             json_data = infile.read()
         metadata_dict = json.loads(json_data)
-   
-        # the toJSON function saves our TileMetadata object as a dictionary
-        # including the SatelliteMetadata objects (we would need to pickle
-        # in order to preserve user defined types), so we need to access
-        # "satellites" key to convert the dictionary of dictionaries to a
-        # dictionary back to SatelliteMetadata objects.
 
         # Create a dictionary for each Tile JSON that contains the parent
         # satellites' metadata
@@ -122,17 +116,8 @@ class Subtile:
         (dir / "subtiles").mkdir(parents=True, exist_ok=True)
         (dir / "metadata").mkdir(parents=True, exist_ok=True)
 
-        # Save your stacked and sliced numpy arrays to the 
-        # ~/data/processed/Train/<Parent_Tile_ID>/subtiles directory
-        # Filenames should follow the format: 
-        # <ParentTileDirectoryName>_<column>_<row>.npz
-        # (ParentTileDirectoryName refers to Tile1, Tile2, etc.)
-        # Hint - You can use np.savez or np.save
         np.savez(dir / "subtiles" / f"{self.tile_metadata.parent_tile_id}_{self.tile_metadata.x_gt}_{self.tile_metadata.y_gt}.npz", **self.satellite_stack)
 
-        # Save the tile_metadata as a JSON in the ~/data/processed/Train/<Parent_Tile_ID>/metadata
-        # using the utility function provided in TileMetaData
-        # Use the same format you used to save the subtiles, but save it as a .json file
         self.tile_metadata.saveJSON(dir / "metadata" / f"{self.tile_metadata.parent_tile_id}_{self.tile_metadata.x_gt}_{self.tile_metadata.y_gt}.json")
 
     def tile_filename_to_metadata_filename(self, file_name: str | os.PathLike):
@@ -264,26 +249,20 @@ def get_tile_ground_truth(
             time and bands are 1
     and bands is 1 for ground truth.
     """
-    
-    # check if size_gt is an int, if so convert to a tuple
+
     if isinstance(size_gt, int):
         size_gt = (size_gt,size_gt)
 
-    # calculate the start and end indices for the slice based on the size_gt and the x and y coordinates
-    # (size_gt[0]*x_gt, size_gt[1]*y_gt) and (size_gt[0]*(x_gt+1), size_gt[1]*(y_gt+1))
+    # Calculate the start and end indices for the slice
     start_x = size_gt[0] * x_gt
     start_y = size_gt[1] * y_gt
     end_x = size_gt[0] * (x_gt+1)
     end_y = size_gt[1] * (y_gt+1)
 
-    # check to make sure the slice is within the bounds of the ground truth parent image
-    
     if end_x > gt_parent.shape[2] or end_y > gt_parent.shape[3]:
         raise ValueError("Requested slice is out of bounds of the parent image")
     
-    # return the slice of the ground truth parent image
     gt_child = np.copy(gt_parent[:,:,start_x:end_x,start_y:end_y])
-
 
     return gt_child
 
@@ -335,13 +314,8 @@ def get_tile_satellite(
     """
     if isinstance(size_gt, int):
         size_gt = (size_gt,size_gt)
-    #returns the pixels on gt_parent between 
-    #(scale_factor*size_gt[0]*x_sat, scale_factor*size_gt[1]*y_sat) and (scale_factor*size_gt[0]*(x_sat+1), scale_factor*size_gt[1]*(y_sat+1))
     
-    # scale_factor = satellite.length / ground_truth.length
-
-    # calculate the start and end indices for the slice based
-    # on the size_gt and the x and y coordinates
+    # Calculate the start and end indices for the slice
     x_start = scale_factor*size_gt[0]*x_sat
     x_end = scale_factor*size_gt[0]*(x_sat+1)
 
@@ -350,31 +324,8 @@ def get_tile_satellite(
 
     sat_child = np.copy(sat_parent[:,:,x_start:x_end, y_start:y_end])
     return sat_child
-    # return the slice of the satellite parent image
-    raise NotImplementedError("Implement the get_tile_satellite function")
 
-'''
-metadata format:
 
-class Metadata:
-    """
-    A class to store metadata about a stack of satellite files from the same date.
-    The attributes are the following:
-
-    satellite_type: one of "viirs", "sentinel1", "sentinel2", "landsat", or "gt"
-    file_name: a list of the original filenames of the satellite's bands
-    tile_id: name of the tile directory, i.e., "Tile1", "Tile2", etc
-    bands: a list of the names of the bands with correspondence to the
-    indexes of the stack object, i.e. ["VH", "VV"] for sentinel-1
-    time: time of the observations
-    """
-    satellite_type: str
-    file_name: List[str]
-    tile_id: str
-    bands: List[str]
-    time: str
-
-'''
 def grid_slice(
         satellite_stack: Dict[str, np.ndarray],
         metadata_stack: Dict[str, List[Metadata]],
@@ -517,12 +468,12 @@ def restitch(
 
         for y in range(range_y[0], range_y[1]):
 
-            #add subtile x,y to restitched image
+            # add subtile x,y to restitched image
             subtile_path = os.path.join(subtiles_dir, f"{tile_id}_{x}_{y}.npz")
             subtile_data = np.load(subtile_path)
             restitched_image[:, :, x * x_subtile_size:(x + 1) * x_subtile_size, y * y_subtile_size:(y + 1) * y_subtile_size] = subtile_data[satellite_type]
             
-            #add TileMetadata to the current row of metadata
+            # add TileMetadata to the current row of metadata
             metadata_path = os.path.join(metadata_dir,f"{tile_id}_{x}_{y}.json")
             restitched_TileMetadata_row.append(TileMetadata.loadJSON(metadata_path))
             

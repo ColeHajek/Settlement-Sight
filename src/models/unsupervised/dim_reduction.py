@@ -28,7 +28,7 @@ def preprocess_for_dim_reduction(
     X_flat_list = []
     y_flat_list = []
 
-    # load the data from the datamodule
+    # Load the data from the datamodule
     dataloader = (
         esd_datamodule.train_dataloader()
     )  # or use .val_dataloader() / .test_dataloader() as needed
@@ -43,9 +43,9 @@ def preprocess_for_dim_reduction(
         X_flat_list.append(X_flat_batch)
         y_flat_list.append(y)
 
-    # concatenate the data
+    # Concatenate the data
     X_flat = np.concatenate(X_flat_list, axis=0)
-    # flatten the data
+    # Flatten the data
     y_flat = np.concatenate(y_flat_list, axis=0).reshape(-1, 1)
 
     return X_flat, y_flat

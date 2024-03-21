@@ -8,7 +8,7 @@ sys.path.append(str(pyprojroot.here()))
 import numpy as np
 from pathlib import Path
 import json
-from src.preprocessing.subtile_esd_hw02 import(
+from src.preprocessing.subtile_esd import(
     SatelliteMetadata,
     TileMetadata,
     Subtile,
