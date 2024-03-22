@@ -7,16 +7,13 @@ data/raw/unit_test_data/*
 plots/*
 scripts/lightning_logs/
 scripts/wandb/
-models/*
 my-first-sweep/
-models/*
 esdenv
 references/*
 .vscode/*
 wandb/
 .my_venv
 lightning_logs/*
-README.md
 changelog.md
 LICENSE
 .DS_Store
