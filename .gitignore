@@ -14,7 +14,6 @@ references/*
 wandb/
 .my_venv
 lightning_logs/*
-README.md
 changelog.md
 LICENSE
 .DS_Store
