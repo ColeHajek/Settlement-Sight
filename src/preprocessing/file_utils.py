@@ -76,13 +76,9 @@ def process_viirs_filename(filename: str) -> Tuple[str, str]:
     """
     parts = filename.split('_')
     date = parts[2][1:-4]
-
-    
     band = "0"
-
     return date, band
 
-#DONE
 def process_s1_filename(filename: str) -> Tuple[str, str]:
     """
     This function takes in the filename of a Sentinel-1 file and outputs
@@ -105,11 +101,8 @@ def process_s1_filename(filename: str) -> Tuple[str, str]:
     parts = filename.split('_')
     date = parts[3]  
     band = parts[4].split('.')[0]  
-    #print("From: ",filename,"Band:",band,"Date:",date)
-
     return date, band
 
-#DONE
 def process_s2_filename(filename: str) -> Tuple[str, str]:
     """
     This function takes in the filename of a Sentinel-2 file and outputs
@@ -134,7 +127,6 @@ def process_s2_filename(filename: str) -> Tuple[str, str]:
     band = band[1:]  
     return date, band
 
-#DONE
 def process_landsat_filename(filename: str) -> Tuple[str, str]:
     """
     This function takes in the filename of a Landsat file and outputs
@@ -159,7 +151,6 @@ def process_landsat_filename(filename: str) -> Tuple[str, str]:
     band = band[1:]
     return date, band
 
-#DONE
 def process_ground_truth_filename(filename: str) -> Tuple[str, str]:
     """
     This function takes in the filename of the ground truth file and returns
