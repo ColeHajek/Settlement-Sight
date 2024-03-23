@@ -19,10 +19,10 @@ This project supports a full pipline from raw data to predicted outputs. Raw dat
 ## Installation
 1. Clone the repository
 2. Install packages in `requirements.txt`
-
+3. Download the IEEE GRSS 2021 dataset from: https://www.grss-ieee.org/community/technical-committees/2021-ieee-grss-data-fusion-contest-track-dse/
 ## Usage
 ### Data
-To use this project, add the raw `.tif` files you wish to use to `data/raw/Train` giving each tile its own folder with the naming convention `TileX` where `X` is the number of the tile. If the data has not been preprocessed, running `scripts/train.py` or `scripts/evaluate.py` will process the data. If you wish to add additional data for augmentation, you can run `src/esd_data/make_new_data.py` which will duplicate the dataset.
+To use this project, add the raw `.tif` files you wish to use to `data/raw/Train` giving each tile its own folder with the naming convention `TileX` where `X` is the number of the tile. Alternativly download the dataset from https://www.grss-ieee.org/community/technical-committees/2021-ieee-grss-data-fusion-contest-track-dse/ If the data has not been preprocessed, running `scripts/train.py` or `scripts/evaluate.py` will process the data. If you wish to add additional data for augmentation, you can run `src/esd_data/make_new_data.py` which will duplicate the dataset.
 ### Training the model
 To train your own model, set up ESDConfig in `scripts/train.py` with the `model_type` you would like to use. The model types are:
 - "UNet"
