@@ -32,7 +32,7 @@ Models are evaluated on the validation data and visualizations of the prediction
 
 ## Usage
 ### Data
-To use this project, add the raw `.tif` files you wish to use to `data/raw/Train` giving each tile its own folder with the naming convention `TileX` where `X` is the number of the tile. If the data has not been preprocessed, running `scripts/train.py` or `scripts/evaluate.py` will process the data. If you wish to add additional data for augmentation, you can run `src/esd_data/make_new_data.py` which will duplicate the dataset.
+To use this project, add the raw `.tif` files you wish to use to `data/raw/Train` giving each tile its own folder with the naming convention `TileX` where `X` is the number of the tile. If the data has not been preprocessed, running `scripts/train.py` or `scripts/evaluate.py` will process the data, so long as the `data/processed` directory does not exist. If the `data/processed` directory exists, no new data will be processed. If you wish to add additional data for augmentation, you can run `src/esd_data/make_new_data.py` which will duplicate the dataset.
 ### Training the model
 To train your own model, set up ESDConfig in `scripts/train.py` with the `model_type` you would like to use. The model types are:
 - "UNet"
