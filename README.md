@@ -11,6 +11,8 @@ The models are:
 - FCNResnetTransfer
 
 ## Pipeline
+![model pipeline](https://github.com/cs175cv-w2024/final-project-the-thunder-men/assets/116922352/b33daac7-c987-46e7-b37c-d574276759d1)
+
 This project supports a full pipline from raw data to predicted outputs. Raw data is preprocessed and model predictions are saved automatically.
 
 Raw `.tif` files are preprocessed to remove outliers and normalize data. Preprocessing consists of grouping files based on their satellite type, then applying band specific cleaning, such as quantile clipping and min-max scaling. Each satellite has its own processing function tailored to their band types.
