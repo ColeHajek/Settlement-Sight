@@ -11,6 +11,8 @@ The models are:
 - FCNResnetTransfer
 
 ## Pipeline
+![model pipeline](https://github.com/cs175cv-w2024/final-project-the-thunder-men/assets/116922352/b33daac7-c987-46e7-b37c-d574276759d1)
+
 This project supports a full pipline from raw data to predicted outputs. Raw data is preprocessed and model predictions are saved automatically.
 
 Raw `.tif` files are preprocessed to remove outliers and normalize data. Preprocessing consists of grouping files based on their satellite type, then applying band specific cleaning, such as quantile clipping and min-max scaling. Each satellite has its own processing function tailored to their band types.
@@ -29,7 +31,7 @@ Models are evaluated on the validation data and visualizations of the prediction
 ## Installation
 1. Clone the repository
 2. Install packages in `requirements.txt`
-
+3. Download the IEEE GRSS 2021 dataset from: https://www.grss-ieee.org/community/technical-committees/2021-ieee-grss-data-fusion-contest-track-dse/
 ## Usage
 ### Data
 To use this project, add the raw `.tif` files you wish to use to `data/raw/Train` giving each tile its own folder with the naming convention `TileX` where `X` is the number of the tile. If the data has not been preprocessed, running `scripts/train.py` or `scripts/evaluate.py` will process the data, so long as the `data/processed` directory does not exist. If the `data/processed` directory exists, no new data will be processed. If you wish to add additional data for augmentation, you can run `src/esd_data/make_new_data.py` which will duplicate the dataset.
