@@ -10,7 +10,17 @@ The models are:
 - SegmentationCNN
 - FCNResnetTransfer
 
+## Pipeline
 This project supports a full pipline from raw data to predicted outputs. Raw data is preprocessed and model predictions are saved automatically.
+
+Raw `.tif` files are preprocessed to remove outliers and normalize data. Preprocessing consists of grouping files based on their satellite type, then applying band specific cleaning, such as quantile clipping and min-max scaling. Each satellite has its own processing function tailored to their band types.
+
+Once preprocessed, files are grid sliced into subtiles, then converted into a `Dataset` and fed into a `Dataloader`. Augmentations can be applied at this time.
+
+The data is split into training and validation sets, then fed into the model to be trained and validated on.
+
+Models are evaluated on the validation data and visualizations of the predictions are generated and saved.
+
 
 ## Table of Contents
 - [Installation](#installation)
