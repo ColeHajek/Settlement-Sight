@@ -1,6 +1,0 @@
-numpy
-matplotlib
-pyprojroot
-pydrive
-tifffile
-scipy
