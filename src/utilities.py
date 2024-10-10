@@ -28,7 +28,7 @@ class ESDConfig:
     checkpoint_file: str = ""
     results_dir: Path = ROOT / "results" / "predictions" / MODEL
 
-    model_path: Path = ROOT / "model_checkpoints" / MODEL / "last-v35.ckpt"
+    model_path: Path = ROOT / "model_checkpoints" / MODEL / "last.ckpt"
     load_from_check_point = False
     model_type: str = MODEL
     wandb_run_name: str | None = None
