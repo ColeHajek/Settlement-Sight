@@ -1,260 +1,310 @@
-""" This code applies preprocessing functions on the IEEE GRSS ESD satellite data."""
+"""
+Module for applying preprocessing functions on the IEEE GRSS ESD satellite data.
+"""
+
+import sys
+from typing import Callable
 import numpy as np
-from scipy.ndimage import gaussian_filter
+import xarray as xr
+import scipy.ndimage
+
+sys.path.append(".")
+from src.utilities import SatelliteType
 
 
-def per_band_gaussian_filter(img: np.ndarray, sigma: float = 1):
+def apply_per_image_operation(data_array: xr.DataArray, operation: Callable, **kwargs) -> xr.DataArray:
     """
-    For each band in the image, apply a gaussian filter with the given sigma.
+    Applies the given operation on each (date, band) pair of the data array.
 
     Parameters
     ----------
-    img : np.ndarray
-        The image to be filtered.
-    sigma : float
-        The sigma of the gaussian filter.
+    data_array : xr.DataArray
+        The input data array with shape (date, band, height, width).
+    operation : Callable
+        The function to apply on each (date, band) pair.
+    **kwargs
+        Additional keyword arguments to pass to the operation function.
 
     Returns
     -------
-    np.ndarray
-        The filtered image.
+    xr.DataArray
+        The data array after applying the operation on each (date, band) pair.
     """
-    for i in range(img.shape[0]):
-        img[i] = gaussian_filter(img[i], sigma)
-    return img
+    for date in range(data_array.shape[0]):
+        for band in range(data_array.shape[1]):
+            data_array[date, band] = operation(data_array[date, band], **kwargs)
+    return data_array
 
 
-def quantile_clip(img_stack: np.ndarray,
-                  clip_quantile: float,
-                  group_by_time=True
-                  ) -> np.ndarray:
+def gaussian_filter(data_array: xr.DataArray, sigma: float = 1) -> xr.DataArray:
     """
-    This function clips the outliers of the image stack by the given quantile.
+    Applies a Gaussian filter to each (height, width) image in the data array.
 
     Parameters
     ----------
-    img_stack : np.ndarray
-        The image stack to be clipped.
+    data_array : xr.DataArray
+        The input data array with shape (date, band, height, width).
+    sigma : float, optional
+        The standard deviation for the Gaussian kernel.
+
+    Returns
+    -------
+    xr.DataArray
+        The data array after applying the Gaussian filter.
+    """
+    return apply_per_image_operation(data_array, scipy.ndimage.gaussian_filter, sigma=sigma)
+
+
+def quantile_clip(data_array: xr.DataArray, clip_quantile: float, group_by_time: bool = True) -> xr.DataArray:
+    """
+    Clips the outliers in the data array based on a given quantile.
+
+    Parameters
+    ----------
+    data_array : xr.DataArray
+        The input data array with shape (date, band, height, width).
     clip_quantile : float
-        The quantile to clip the outliers by.
+        The quantile value for clipping outliers (between 0 and 0.5).
+    group_by_time : bool, optional
+        If True, quantile limits are shared along the time dimension.
 
     Returns
     -------
-    np.ndarray
-        The clipped image stack.
+    xr.DataArray
+        The clipped data array.
     """
     if group_by_time:
-        axis = (-2, -1)
+        for band_index in range(data_array.shape[1]):
+            q_low = np.quantile(data_array[:, band_index].values, q=clip_quantile, method="lower")
+            q_high = np.quantile(data_array[:, band_index].values, q=1 - clip_quantile, method="higher")
+            data_array[:, band_index] = np.clip(data_array[:, band_index].values, q_low, q_high)
     else:
-        axis = (0, -2, -1)
-    data_lower_bound = np.quantile(
-        img_stack,
-        clip_quantile,
-        axis=axis,
-        keepdims=True
-        )
-    data_upper_bound = np.quantile(
-        img_stack,
-        1-clip_quantile,
-        axis=axis,
-        keepdims=True
-        )
-    img_stack = np.clip(img_stack, data_lower_bound, data_upper_bound)
+        def clip_func(array, q_low, q_high):
+            return np.clip(array, q_low, q_high)
 
-    return img_stack
+        return apply_per_image_operation(data_array, clip_func, q_low=clip_quantile, q_high=1 - clip_quantile)
+
+    return data_array
 
 
-def minmax_scale(img: np.ndarray, group_by_time=True):
+def minmax_scale(data_array: xr.DataArray, group_by_time: bool = True) -> xr.DataArray:
     """
-    This function minmax scales the image stack.
+    Scales the values in the data array to the range [0, 1].
 
     Parameters
     ----------
-    img : np.ndarray
-        The image stack to be minmax scaled.
-    group_by_time : bool
-        Whether to group by time or not.
+    data_array : xr.DataArray
+        The input data array with shape (date, band, height, width).
+    group_by_time : bool, optional
+        If True, min-max scaling is shared along the time dimension.
 
     Returns
     -------
-    np.ndarray
-        The minmax scaled image stack.
+    xr.DataArray
+        The min-max scaled data array.
     """
+    def scale(array, min_val, max_val):
+        return (array - min_val) / (max_val - min_val) if min_val != max_val else np.ones_like(array)
+
     if group_by_time:
-        axis = (-2, -1)
+        for band_index in range(data_array.shape[1]):
+            min_value, max_value = data_array[:, band_index].min().values, data_array[:, band_index].max().values
+            data_array[:, band_index] = scale(data_array[:, band_index], min_value, max_value)
     else:
-        axis = (0, -2, -1)
-    img = img.astype(np.float32)
-    min_val = img.min(axis=axis, keepdims=True)
-    max_val = img.max(axis=axis, keepdims=True)
-    normalized_img = (img - min_val) / (max_val - min_val)
-    return normalized_img
+        return apply_per_image_operation(data_array, scale)
+
+    return data_array
 
 
-def brighten(img, alpha=0.13, beta=0):
+def brighten(data_array: xr.DataArray, alpha: float = 0.13, beta: float = 0) -> xr.DataArray:
     """
-    Function to brighten the image.
+    Brightens the image using the formula: `alpha * pixel_value + beta`.
 
     Parameters
     ----------
-    img : np.ndarray
-        The image to be brightened.
-    alpha : float
-        The alpha parameter of the brightening.
-    beta : float
-        The beta parameter of the brightening.
+    data_array : xr.DataArray
+        The input data array with shape (date, band, height, width).
+    alpha : float, optional
+        The multiplicative factor for brightness adjustment.
+    beta : float, optional
+        The additive factor for brightness adjustment.
 
     Returns
     -------
-    np.ndarray
-        The brightened image.
+    xr.DataArray
+        The brightened data array.
     """
-    return np.clip(alpha * img + beta, 0.0, 1.0)
+    def brighten_func(array, alpha, beta):
+        return alpha * array + beta
+
+    return apply_per_image_operation(data_array, brighten_func, alpha=alpha, beta=beta)
 
 
-def gammacorr(band, gamma=2):
+def gammacorr(data_array: xr.DataArray, gamma: float = 2) -> xr.DataArray:
     """
-    This function applies a gamma correction to the image.
+    Applies gamma correction to the image using the formula: `pixel_value ** (1/gamma)`.
 
     Parameters
     ----------
-    band : np.ndarray
-        The image to be gamma corrected.
-    gamma : float
-        The gamma parameter of the gamma correction.
+    data_array : xr.DataArray
+        The input data array with shape (date, band, height, width).
+    gamma : float, optional
+        The gamma correction parameter.
 
     Returns
     -------
-    np.ndarray
-        The gamma corrected image.
+    xr.DataArray
+        The gamma corrected data array.
     """
-    return np.power(band, 1/gamma)
+    def gamma_func(array, gamma):
+        return np.power(array, 1 / gamma)
+
+    return apply_per_image_operation(data_array, gamma_func, gamma=gamma)
 
 
-def maxprojection_viirs(
-        viirs_stack: np.ndarray,
-        clip_quantile: float = 0.01
-        ) -> np.ndarray:
+def convert_data_to_db(data_array: xr.DataArray) -> xr.DataArray:
     """
-    This function takes a directory of VIIRS tiles and returns a single
-    image that is the max projection of the tiles.
+    Converts raw Sentinel-1 SAR data to decibel (dB) format using logarithmic transformation.
 
     Parameters
     ----------
-    tile_dir : str
-        The directory containing the VIIRS tiles.
+    data_array : xr.DataArray
+        The input data array with shape (date, band, height, width).
 
     Returns
     -------
-    np.ndarray
+    xr.DataArray
+        The converted data array in dB format.
     """
-    for i in range(viirs_stack.shape[0]):
-        viirs_data_lower_bound = np.quantile(
-            viirs_stack[i, :, :, :],
-            clip_quantile
-            )
-        viirs_data_upper_bound = np.quantile(
-            viirs_stack[i, :, :, :],
-            1-clip_quantile
-            )
-        viirs_stack[i, :, :, :] = np.clip(
-            viirs_stack[i, :, :, :],
-            viirs_data_lower_bound,
-            viirs_data_upper_bound
-            )
-
-    # Calculate the max projection of the viirs_data_stack along the third axis
-    # and assign it to the blank_array
-    viirs_stack = np.max(viirs_stack, axis=0)
-    viirs_stack = minmax_scale(viirs_stack)
-
-    return viirs_stack
+    return apply_per_image_operation(data_array, lambda x: 10 * np.log10(np.where(x != 0, x, np.nan)))
 
 
-def preprocess_sentinel1(
-        sentinel1_stack: np.ndarray,
-        clip_quantile: float = 0.01,
-        sigma=1
-        ) -> np.ndarray:
+def preprocess_sentinel1(data_array: xr.DataArray, clip_quantile: float = 0.01, sigma: float = 1) -> xr.DataArray:
     """
-    In this function we will preprocess sentinel1. The steps for preprocessing
-    are the following:
-        - Convert data to dB (log scale)
-        - Clip higher and lower quantile outliers per band per timestep
-        - Apply a gaussian filter
-        - Minmax scale
+    Preprocesses Sentinel-1 data by converting to dB, clipping outliers, applying Gaussian filter, and min-max scaling.
+
+    Parameters
+    ----------
+    data_array : xr.DataArray
+        The Sentinel-1 data array with shape (date, band, height, width).
+    clip_quantile : float, optional
+        The quantile value for clipping outliers.
+    sigma : float, optional
+        The standard deviation for Gaussian kernel.
+
+    Returns
+    -------
+    xr.DataArray
+        The preprocessed Sentinel-1 data array.
     """
+    data_array = convert_data_to_db(data_array)
+    data_array = quantile_clip(data_array, clip_quantile)
+    data_array = gaussian_filter(data_array, sigma)
+    return minmax_scale(data_array)
 
-    # convert data to dB
-    sentinel1_stack = np.log10(sentinel1_stack)
-
-    # clip outliers
-    sentinel1_stack = quantile_clip(
-        sentinel1_stack,
-        clip_quantile=clip_quantile
-        )
-    sentinel1_stack = per_band_gaussian_filter(sentinel1_stack, sigma=sigma)
-    sentinel1_stack = minmax_scale(sentinel1_stack)
-
-    return sentinel1_stack
-
-
-def preprocess_sentinel2(sentinel2_stack: np.ndarray,
-                         clip_quantile: float = 0.1,
-                         gamma: float = 2.2
-                         ) -> np.ndarray:
+def preprocess_sentinel2(
+    sentinel2_data_array: xr.DataArray, clip_quantile: float = 0.05, gamma: float = 2.2
+) -> xr.DataArray:
     """
     In this function we will preprocess sentinel-2. The steps for
     preprocessing are the following:
-        - Clip higher and lower quantile outliers per band per timestep
+        - Clip higher and lower quantile outliers
         - Apply a gamma correction
         - Minmax scale
+
+    Parameters
+    ----------
+    sentinel2_data_array : xr.DataArray
+        The sentinel2_data_array to be preprocessed. The shape of the array is (date, band, height, width).
+    Returns
+    -------
+    xr.DataArray
+        The processed sentinel2_data_array. The shape of the array is (date, band, height, width).
     """
-    sentinel2_stack = quantile_clip(
-        sentinel2_stack,
-        clip_quantile=clip_quantile,
-        group_by_time=False
-        )
-    sentinel2_stack = gammacorr(sentinel2_stack, gamma=gamma)
-    sentinel2_stack = minmax_scale(sentinel2_stack, group_by_time=False)
-
-    return sentinel2_stack
-
+    data_array = quantile_clip(sentinel2_data_array, clip_quantile)
+    data_array = gammacorr(data_array, gamma)
+    return minmax_scale(data_array)
 
 def preprocess_landsat(
-        landsat_stack: np.ndarray,
-        clip_quantile: float = 0.05,
-        gamma: float = 2.2
-        ) -> np.ndarray:
+    landsat_data_array: xr.DataArray, clip_quantile: float = 0.01, gamma: float = 2.2
+) -> xr.DataArray:
     """
     In this function we will preprocess landsat. The steps for preprocessing
     are the following:
-        - Clip higher and lower quantile outliers per band per timestep
+        - Clip higher and lower quantile outliers
         - Apply a gamma correction
         - Minmax scale
+
+    Parameters
+    ----------
+    landsat_data_array : xr.DataArray
+        The landsat_data_array to be preprocessed. The shape of the array is (date, band, height, width).
+    Returns
+    -------
+    xr.DataArray
+        The processed landsat_data_array. The shape of the array is (date, band, height, width).
     """
-    landsat_stack = quantile_clip(
-        landsat_stack,
-        clip_quantile=clip_quantile,
-        group_by_time=False
-        )
-    landsat_stack = gammacorr(landsat_stack, gamma=gamma)
-    landsat_stack = minmax_scale(landsat_stack, group_by_time=False)
+    data_array = quantile_clip(landsat_data_array, clip_quantile)
+    data_array = gammacorr(data_array, gamma)
+    return minmax_scale(data_array)
 
-    return landsat_stack
-
-
-def preprocess_viirs(viirs_stack, clip_quantile=0.05) -> np.ndarray:
+def preprocess_viirs(
+    viirs_data_array: xr.DataArray, clip_quantile: float = 0.05
+) -> xr.DataArray:
     """
     In this function we will preprocess viirs. The steps for preprocessing are
     the following:
-        - Clip higher and lower quantile outliers per band per timestep
+        - Clip higher and lower quantile outliers
         - Minmax scale
+
+    Parameters
+    ----------
+    viirs_data_array : xr.DataArray
+        The viirs_data_array to be preprocessed. The shape of the array is (date, band, height, width).
+    Returns
+    -------
+    xr.DataArray
+        The processed viirs_data_array. The shape of the array is (date, band, height, width).
     """
-    viirs_stack = quantile_clip(
-        viirs_stack,
-        clip_quantile=clip_quantile,
-        group_by_time=True
-        )
-    viirs_stack = minmax_scale(viirs_stack, group_by_time=True)
-    return viirs_stack
+    data_array = quantile_clip(viirs_data_array, clip_quantile)
+    return minmax_scale(data_array)
+
+def maxprojection_viirs(data_array: xr.DataArray) -> xr.DataArray:
+    """
+    This function takes a VIIRS data_array and returns a single image that is the max projection of the images
+    to identify areas with the highest levels of nighttime lights or electricity usage.
+
+    The value of any pixel is the maximum value over all time steps, like shown below
+
+       Date 1               Date 2                      Output
+    -------------       -------------               -------------
+    | 0 | 1 | 0 |       | 2 | 0 | 0 |               | 2 | 1 | 0 |
+    -------------       -------------   ======>     -------------
+    | 0 | 0 | 3 |       | 0 | 4 | 0 |   ======>     | 0 | 4 | 3 |
+    -------------       -------------   ======>     -------------
+    | 9 | 6 | 0 |       | 0 | 8 | 7 |               | 9 | 8 | 7 |
+    -------------       -------------               -------------
+
+    Parameters
+    ----------
+    data_array : xr.DataArray
+        The data_array to be brightened. The shape of the array is (date, band, height, width).
+    Returns
+    -------
+    xr.DataArray
+        Max projection of the VIIRS data_array. The shape of the array is (date, band, height, width)
+    """
+     # Compute the maximum projection along the date axis (time dimension) for the single band.
+    max_projection = data_array.max(dim="date", skipna=True)
+
+    # Reshape the maximum projection to fit the expected (1, 1, height, width) format.
+    max_projection = max_projection.expand_dims(dim={"date": [data_array["date"][0]], "band": [0]})
+
+    # Set attributes to match the original data array, with the updated satellite type.
+    max_projection.attrs.update({
+        "satellite_type": SatelliteType.VIIRS_MAX_PROJ.value,
+        "tile_dir": data_array.attrs.get("tile_dir", ""),
+        "parent_tile_id": data_array.attrs.get("parent_tile_id", "")
+    })
+
+    return max_projection

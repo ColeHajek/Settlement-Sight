@@ -1,21 +1,20 @@
-""" This module contains the PyTorch Lightning ESDDataModule to use with the
-PyTorch ESD dataset."""
+"""Legacy code from hw03 datamodule.py winter 2024"""
 
-import os
-import re
-from copy import deepcopy
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-import numpy as np
 import pytorch_lightning as pl
 import torch
+import torch.utils
+import torch.utils.data
+import torch.utils.data.dataloader
+import xarray as xr
 from sklearn.model_selection import train_test_split
-from torch import Generator
-from torch.utils.data import DataLoader
-from torchvision import transforms
+from torchvision import transforms as torchvision_transforms
 from tqdm import tqdm
 
+sys.path.append(".")
 from src.esd_data.augmentations import (
     AddNoise,
     Blur,
@@ -23,264 +22,201 @@ from src.esd_data.augmentations import (
     RandomVFlip,
     ToTensor,
 )
-from src.preprocessing.file_utils import Metadata
-
-from ..preprocessing.file_utils import load_satellite
-from ..preprocessing.preprocess_sat import (
+from src.esd_data.dataset import ESDDataset
+from src.preprocessing.file_utils import load_satellite
+from src.preprocessing.preprocess_sat import (
     maxprojection_viirs,
     preprocess_landsat,
     preprocess_sentinel1,
     preprocess_sentinel2,
     preprocess_viirs,
 )
-from ..preprocessing.subtile_esd import grid_slice
-from .dataset import DSE
+from src.preprocessing.subtile import Subtile
+from src.utilities import SatelliteType
 
 
 def collate_fn(batch):
-    Xs = []
-    ys = []
-    metadatas = []
-
-    for X, y, metadata in batch:
-
-        X_tensor = torch.tensor(
-            X, dtype=torch.float32
-        )  # change this if you want to run float64
-        y_tensor = torch.tensor(y, dtype=torch.float32)
-        Xs.append(X_tensor)  # float32
-        ys.append(y_tensor)  # float64
-
-        metadatas.append(metadata)
-
-    Xs = torch.stack(Xs)
-    ys = torch.stack(ys)
-    return Xs, ys, metadatas
-
+    """
+    Custom collate function for combining samples into a batch.
+    
+    Parameters:
+        batch (List[Tuple[torch.Tensor, torch.Tensor]]): List of tuples containing image and label.
+        
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Batch of stacked images and labels.
+    """
+    Xs, ys = zip(*batch)  # Unpack image and label pairs
+    Xs = torch.stack(Xs)  # Stack images into a single tensor
+    ys = torch.stack(ys)  # Stack labels into a single tensor
+    return Xs, ys
 
 class ESDDataModule(pl.LightningDataModule):
     """
-    PyTorch Lightning ESDDataModule to use with the PyTorch ESD dataset.
+    The ESDDataModule class is designed to encapsulate data loading and processing logic for a model within the PyTorch Lightning framework.
 
     Attributes:
-        processed_dir: str | os.PathLike
-            Location of the processed data
-        raw_dir: str | os.PathLike
-            Location of the raw data
-        selected_bands: Dict[str, List[str]] | None
-            Dictionary mapping satellite type to list of bands to select
-        tile_size_gt: int
-            Size of the ground truth tiles
-        batch_size: int
-            Batch size
-        seed: int
-            Seed for the random number generator
+        processed_dir: Path to the directory containing processed data.
+        raw_dir: Path to the directory containing raw data.
+        batch_size: Batch size for data loaders.
+        seed: Random seed for data processing.
+        selected_bands: Dictionary mapping SatelliteType to a list of selected bands.
+        slice_size: Tuple specifying the size for subtiling.
+        train_size: Fraction of data allocated for training.
+        transform_list: List of torchvision transforms applied to the data.
+
+    Methods:
+        load_and_preprocess(tile_dir: Path) -> Tuple[List[xr.DataArray], xr.DataArray]:
+            Loads and preprocesses tile data located in tile_dir.
+
+        prepare_data() -> None:
+            Processes raw data by loading, splitting into train-test, and subtiling for training and validation.
+
+        setup(stage: str) -> None:
+            Sets up the training and validation datasets (self.train_dataset, self.val_dataset).
+
+        train_dataloader() -> torch.utils.data.DataLoader:
+            Creates and returns a DataLoader for the training dataset.
+
+        val_dataloader() -> torch.utils.data.DataLoader:
+            Creates and returns a DataLoader for the validation dataset.
     """
 
     def __init__(
         self,
-        processed_dir: str | os.PathLike,
-        raw_dir: str | os.PathLike,
-        selected_bands: Dict[str, List[str]] | None = None,
-        tile_size_gt=4,
-        batch_size=32,
-        seed=12378921,
+        processed_dir: Path,
+        raw_dir: Path,
+        batch_size: int = 32,
+        num_workers: int = 15,
+        seed: int = 12378921,
+        selected_bands: Dict[SatelliteType, List[str]] = None,
+        slice_size: Tuple[int, int] = (4, 4),
+        train_size: float = 0.8,
+        transform_list: list = [
+            torchvision_transforms.RandomApply([AddNoise()], p=0.5),
+            torchvision_transforms.RandomApply([Blur()], p=0.5),
+            torchvision_transforms.RandomApply([RandomHFlip()], p=0.5),
+            torchvision_transforms.RandomApply([RandomVFlip()], p=0.5),
+            ToTensor(),
+        ],
     ):
-
-        super().__init__()
+        super(ESDDataModule, self).__init__()
         self.processed_dir = processed_dir
         self.raw_dir = raw_dir
-        self.selected_bands = selected_bands
-        self.tile_size_gt = tile_size_gt
         self.batch_size = batch_size
+        self.num_workers = num_workers
         self.seed = seed
+        self.selected_bands = selected_bands
+        self.slice_size = slice_size
+        self.train_size = train_size
+        self.satellite_type_list = list(self.selected_bands.keys())
 
-        # Seed for reproducibility in transformations
-        pl.seed_everything(self.seed)
+        # Define data transformations
+        self.transform = torchvision_transforms.transforms.Compose(transform_list)
 
-        # Create transforms
-        self.transform = transforms.Compose(
-            [
-                transforms.RandomApply([AddNoise()], p=0.5),
-                transforms.RandomApply([Blur()], p=0.5),
-                RandomHFlip(p=0.5),
-                RandomVFlip(p=0.5),
-                ToTensor(),
-            ]
-        )
+        # Define directories for train and validation data
+        self.train_dir = self.processed_dir / "Train"
+        self.val_dir = self.processed_dir / "Val"
 
-    def __load_and_preprocess(
-        self,
-        tile_dir: str | os.PathLike,
-        satellite_types: List[str] = [
-            "viirs",
-            "sentinel1",
-            "sentinel2",
-            "landsat",
-            "gt",
-        ],
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, List[Metadata]]]:
+    def load_and_preprocess(self,tile_dir: Path) -> Tuple[List[xr.DataArray], xr.DataArray]:
         """
-        Performs the preprocessing step: for a given tile located in tile_dir,
-        loads the tif files and preprocesses them just like in homework 1.
+        Load and preprocess raw satellite imagery data from `tile_dir`.
+        
+        Parameters:
+            tile_dir (Path): Path to the directory containing raw tile data.
 
-        Input:
-            tile_dir: str | os.PathLike
-                Location of raw tile data
-            satellite_types: List[str]
-                List of satellite types to process
-
-        Output:
-            satellite_stack: Dict[str, np.ndarray]
-                Dictionary mapping satellite_type -> (time, band, width, height) array
-            satellite_metadata: Dict[str, List[Metadata]]
-                Metadata accompanying the statellite_stack
+        Returns:
+            Tuple[List[xr.DataArray], xr.DataArray]: List of preprocessed data arrays and ground truth data array.
         """
         preprocess_functions = {
-            "viirs": preprocess_viirs,
-            "sentinel1": preprocess_sentinel1,
-            "sentinel2": preprocess_sentinel2,
-            "landsat": preprocess_landsat,
-            "gt": lambda x: x,
+            SatelliteType.VIIRS: preprocess_viirs,
+            SatelliteType.S1: preprocess_sentinel1,
+            SatelliteType.S2: preprocess_sentinel2,
+            SatelliteType.LANDSAT: preprocess_landsat,
         }
 
-        satellite_stack = {}
-        satellite_metadata = {}
-        for satellite_type in satellite_types:
-            stack, metadata = load_satellite(tile_dir, satellite_type)
-
-            stack = preprocess_functions[satellite_type](stack)
-
-            satellite_stack[satellite_type] = stack
-            satellite_metadata[satellite_type] = metadata
-
-        satellite_stack["viirs_maxproj"] = np.expand_dims(
-            maxprojection_viirs(satellite_stack["viirs"], clip_quantile=0.0), axis=0
-        )
-        satellite_metadata["viirs_maxproj"] = deepcopy(satellite_metadata["viirs"])
-        for metadata in satellite_metadata["viirs_maxproj"]:
-            metadata.satellite_type = "viirs_maxproj"
-
-        return satellite_stack, satellite_metadata
-
-    def process_save(self, tiles, path):
-        for tile in tiles:
-            # Load and preprocess the data for all satellite types
-            processed_data = self.__load_and_preprocess(tile_dir=tile)
-
-            # Grid slice the data with the given tile_size_gt
-            subtiles = grid_slice(
-                satellite_stack=processed_data[0],
-                metadata_stack=processed_data[1],
-                tile_size_gt=self.tile_size_gt,
+        # Load and preprocess each satellite type, excluding VIIRS max projection
+        preprocessed_data_array_list = [
+            preprocess_functions[satellite_type](
+                load_satellite(tile_dir, satellite_type).sel(band=self.selected_bands[satellite_type])
             )
-            # Save each subtile
-            for subtile in subtiles:
-                subtile.save(dir=path)
+            for satellite_type in self.satellite_type_list if satellite_type != SatelliteType.VIIRS_MAX_PROJ
+        ]
 
-    def prepare_data(self, seed=1024):
+        # Handle VIIRS max projection separately if it exists in the satellite types
+        if SatelliteType.VIIRS_MAX_PROJ in self.satellite_type_list:
+            preprocessed_data_array_list.append(
+                maxprojection_viirs(load_satellite(tile_dir, SatelliteType.VIIRS))
+            )
+        # Load ground truth data
+        gt_data = load_satellite(tile_dir, SatelliteType.GT)
+
+        return preprocessed_data_array_list, gt_data
+
+    def prepare_data(self) -> None:
         """
-        If the data has not been processed before (denoted by whether or not self.processed_dir is an existing directory)
+        If the data has not been processed before (denoted by whether or not self.processed_dir is an existing directory),
+        we will process it.
 
-        For each tile,
-            - load and preprocess the data in the tile
-            - grid slice the data
-            - for each resulting subtile
-                - save the subtile data to self.processed_dir
+        The steps for processing are as follows:
+            - load all 60 tiles
+            - train test split the tiles
+            - subtile and save the training split
+            - subtile and save the testing split
         """
-        # If the processed_dir does not exist, process the data and create
-        # subtiles of the parent image to save
-        if Path(self.processed_dir).exists():
-            return
+       
+        if not self.processed_dir.exists() or not list(self.processed_dir.glob("*")):
+            # Load raw tile data
+            tile_dirs = list(self.raw_dir.glob("*"))
+            
+            # Perform train-test split
+            tile_dirs_train, tile_dirs_val = train_test_split(tile_dirs, test_size=1 - self.train_size, train_size=self.train_size, random_state=self.seed)
+            
+            # Process and save training subtiles
+            for tile_dir in tqdm(tile_dirs_train, desc="Processing train tiles"):
+                data_array_list, gt_data_array = self.load_and_preprocess(tile_dir)
+                subtile = Subtile(data_array_list, gt_data_array, self.slice_size)
+                subtile.save(self.train_dir)
 
-        # Create "data/processed/nxn/" directory
-        self.processed_dir.mkdir(parents=True, exist_ok=True)
+            # iterate over the tile directories in tqdm(list(tile_dirs_val), desc="Processing validation tiles"):
+            # Process and save validation subtiles
+            for tile_dir in tqdm(tile_dirs_val, desc="Processing validation tiles"):
+                data_array_list, gt_data_array = self.load_and_preprocess(tile_dir)
+                subtile = Subtile(data_array_list, gt_data_array, self.slice_size)
+                subtile.save(self.val_dir)
+        else:
+            print("Processed data already exists. Skipping redundant processing")
 
-        train_path = Path(self.processed_dir / "Train")
-        train_path.mkdir(parents=True, exist_ok=True)
+    def setup(self, stage: str) -> None:
+        """
+        Set up the training, validation, or test dataset based on the specified stage.
+        
+        Parameters:
+            stage (str): Either "fit" for training/validation or "test" for test setup.
+        """
+        if stage == "fit":
+            # Setup training and validation datasets
+            self.train_dataset = ESDDataset(self.train_dir, self.transform, self.satellite_type_list, self.slice_size)
+            self.val_dataset = ESDDataset(self.val_dir, self.transform, self.satellite_type_list, self.slice_size)
+        
+        if stage == "test":
+            # Setup test dataset
+            self.test_dataset = ESDDataset(self.train_dir, self.transform, self.satellite_type_list, self.slice_size)
 
-        # Create data/processed/nxn/Val
-        val_path = Path(self.processed_dir / "Val")
-        val_path.mkdir(parents=True, exist_ok=True)
 
-        # Fetch all the parent tiles in the raw_dir
-        subdirectories = [d for d in self.raw_dir.iterdir() if d.is_dir()]
-
-        # Randomly split the directories into train and val
-        train_tiles, val_tiles = train_test_split(
-            subdirectories, test_size=0.2, train_size=0.8, random_state=seed
+    def train_dataloader(self) -> torch.utils.data.DataLoader:
+        """Creates and returns a DataLoader for the training dataset."""
+        return torch.utils.data.DataLoader(
+            self.train_dataset, batch_size=self.batch_size, collate_fn=collate_fn, num_workers=self.num_workers, persistent_workers=True
         )
 
-        # Sort the subdirectories
-        train_tiles = sorted(
-            train_tiles,
-            key=lambda x: [
-                int(text) if text.isdigit() else text.lower()
-                for text in re.split("([0-9]+)", x.name)
-            ],
-        )
-        val_tiles = sorted(
-            val_tiles,
-            key=lambda x: [
-                int(text) if text.isdigit() else text.lower()
-                for text in re.split("([0-9]+)", x.name)
-            ],
+    def val_dataloader(self) -> torch.utils.data.DataLoader:
+        """Creates and returns a DataLoader for the validation dataset."""
+        return torch.utils.data.DataLoader(
+            self.val_dataset, batch_size=self.batch_size, collate_fn=collate_fn, num_workers=self.num_workers, persistent_workers=True
         )
 
-        self.process_save(train_tiles, train_path)
-
-        self.process_save(val_tiles, val_path)
-
-    def setup(self, stage: str = None, seed=1024):
-        """
-        Create self.train_dataset and self.val_dataset.0000ff
-
-        Hint: Use torch.utils.data.random_split to split the Train
-        directory loaded into the PyTorch dataset DSE into an 80% training
-        and 20% validation set. Set the seed to 1024.
-        """
-        # Create generator for random number generation.
-        gen = Generator()
-        gen.manual_seed(seed)
-
-        train = DSE(
-            root_dir=self.processed_dir / "Train",
-            selected_bands=self.selected_bands,
-            transform=self.transform,
-        )
-        val = DSE(
-            root_dir=self.processed_dir / "Val",
-            selected_bands=self.selected_bands,
-            transform=self.transform,
-        )
-
-        self.train_dataset = train
-        self.val_dataset = val
-
-    def train_dataloader(self):
-        """
-        Create and return a torch.utils.data.DataLoader with
-        self.train_dataset
-        """
-        return DataLoader(
-            dataset=self.train_dataset,
-            batch_size=self.batch_size,
-            collate_fn=collate_fn,
-            num_workers=7,
-            shuffle=True,
-            persistent_workers=True,
-        )
-
-    def val_dataloader(self):
-        """
-        Create and return a torch.utils.data.DataLoader with
-        self.val_dataset
-        """
-
-        return DataLoader(
-            dataset=self.val_dataset,
-            batch_size=self.batch_size,
-            collate_fn=collate_fn,
-            num_workers=7,
-            persistent_workers=True,
+    def test_dataloader(self) -> torch.utils.data.DataLoader:
+        """Creates and returns a DataLoader for the test dataset."""
+        return torch.utils.data.DataLoader(
+            self.test_dataset, batch_size=self.batch_size, collate_fn=collate_fn, num_workers=self.num_workers
         )
