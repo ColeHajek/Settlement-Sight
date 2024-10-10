@@ -1,190 +1,261 @@
-import os
-import sys
-import pyprojroot
-import torch
-root = pyprojroot.here()
-sys.path.append(str(root))
 from pathlib import Path
-from typing import List, Tuple
-from PIL import Image
-
-from src.preprocessing.subtile_esd import restitch
-
-import numpy as np
-import matplotlib.pyplot as plt
+from typing import List
+import torch
 import matplotlib
-from src.preprocessing.subtile_esd import TileMetadata, Subtile
+import matplotlib.pyplot as plt
+import numpy as np
+
+from src.preprocessing.subtile import Subtile
+from src.utilities import SatelliteType
 
 
-def get_subtile_preds(subtile_path,datamodule,model):
-    tile_name = subtile_path.name            
-    # find the index for the tile in the datamodule 
-    idx = None
-    for i, tile in enumerate(datamodule.val_dataset.tiles):
-        if tile.name == tile_name:
-            idx = i
-
-    if idx is None:
-        raise ValueError(f"Tile {tile_name} not found in dataset.")
-    
-    X, y, subtile_metadata = datamodule.val_dataset.__getitem__(idx) 
-
-    # Ensure X and y are in proper tensor format
-    X_tensor = torch.tensor(X, dtype=torch.float32)
-    y_tensor = torch.tensor(y, dtype=torch.int64)
-
-    X_tensor = X_tensor.unsqueeze(0)
-
-    # Run on GPU if available
-    if torch.cuda.is_available():
-        X_tensor = X_tensor.cuda()
-        y_tensor = y_tensor.cuda()
-
-    y = y_tensor.cpu().numpy()
-
-    # Detach predictions from the gradient, move to cpu and convert to numpy
-    with torch.no_grad():
-        predictions = model.forward(X_tensor)
-        predictions = torch.argmax(predictions,dim=1)
-        predictions = predictions.squeeze(0).cpu().numpy()
-
-    return predictions, y 
-
-
-def restitch_and_plot(options, datamodule, model, parent_tile_id, satellite_type="sentinel2", rgb_bands=[3,2,1], image_dir: None | str | os.PathLike = None):
+def restitch_and_plot(
+    options,
+    datamodule,
+    model,
+    parent_tile_id: str,
+    accelerator: str,
+    satellite_type: SatelliteType = SatelliteType.S2,
+    selected_bands: List = ["04", "03", "02"],
+    results_dir: Path = None,
+):
     """
-    Plots the 1) rgb satellite image 2) ground truth 3) model prediction in one row.
+    Plots the RGB satellite image, ground truth, and model predictions side-by-side.
 
-    Args:
-        options: EvalConfig
-        datamodule: ESDDataModule
-        model: ESDSegmentation
-        parent_tile_id: str
-        satellite_type: str
-        rgb_bands: List[int]
+    Parameters
+    ----------
+    options : Namespace
+        Configuration options for the data.
+    datamodule : DataModule
+        DataModule used to load the dataset.
+    model : nn.Module
+        Trained model used for prediction.
+    parent_tile_id : str
+        Identifier of the parent tile being processed.
+    accelerator : str
+        Either 'cpu' or 'gpu' to specify device type.
+    satellite_type : SatelliteType, optional
+        Satellite type to use for the RGB image (default is Sentinel-2).
+    selected_bands : List[str], optional
+        List of bands to use for RGB plotting (default is ["04", "03", "02"]).
+    results_dir : Path, optional
+        Directory to save the plot. If None, the plot is displayed.
+
+    Raises
+    ------
+    KeyError
+        If the specified satellite data is not available in the subtile.
     """
-    cmap = matplotlib.colors.LinearSegmentedColormap.from_list("Settlements", np.array(['#ff0000', '#0000ff', '#ffff00', '#b266ff']), N=4)
+    subtile, prediction = restitch_eval(
+        processed_dir=options.processed_dir / "Val",
+        parent_tile_id=parent_tile_id,
+        accelerator=accelerator,
+        datamodule=datamodule,
+        model=model,
+    )
+
+    y_pred = prediction[0].argmax(axis=0)
+
+    cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+        "Settlements", np.array(["#ff0000", "#0000ff", "#ffff00", "#b266ff"]), N=4
+    )
+
+    # Create subplots
     fig, axs = plt.subplots(nrows=1, ncols=3)
+
+    # Select satellite data to plot
+    satellite_data = None
+    for sat_data in subtile.satellite_list:
+        if sat_data.satellite_type == satellite_type.value:
+            satellite_data = sat_data
+
+    if satellite_data is None:
+        raise KeyError("Missing satellite from subtile")
     
-    # 1. Get satallite visual data
-    sat_path = Path(options.processed_dir/"Val"/"subtiles")
-    restitch_len = 16//options.tile_size_gt
-    stitched_sat, _ = restitch(sat_path,satellite_type,parent_tile_id,(0,restitch_len),(0,restitch_len))
+    # Convert satellite data to RGB image
+    rgb_image = satellite_data.sel(band=selected_bands).to_numpy()[0].transpose(1, 2, 0)
     
-    # Stack bands to get RGB image
-    stitched_RGB = np.dstack([stitched_sat[0,rgb_bands[0],:,:],stitched_sat[0,rgb_bands[1],:,:],stitched_sat[0,rgb_bands[2],:,:]])
+    # Plot RGB image, ground truth, and prediction
+    axs[0].set_title("RGB image")
+    axs[0].imshow(rgb_image)
+
+    axs[1].set_title("Ground truth")
+    axs[1].imshow(subtile.ground_truth.values[0][0]-1, cmap=cmap, vmin=-0.5, vmax=3.5)
     
-    axs[0].set_title("RGB"+satellite_type)
-    axs[0].imshow(stitched_RGB)
+    axs[2].set_title("Prediction")
+    im = axs[2].imshow(y_pred, cmap=cmap, vmin=-0.5, vmax=3.5)
 
-
-    # 2. Get the ground truth data
-    gt_path = Path(options.raw_dir/ parent_tile_id/'groundTruth.tif')
-    gt_arr = np.array(Image.open(gt_path))
-
-    # Subtract one from the original values to correspond to predicted value 0-3 indexing
-    gt_arr = np.subtract(gt_arr,1)
-
-    axs[1].set_title("Ground Truth")
-    axs[1].imshow(gt_arr,cmap=cmap, vmin=-0.5, vmax=3.5)
-    im = axs[1].imshow(gt_arr,cmap=cmap, vmin=-0.5, vmax=3.5)
-
-    # 3. Get prediction data
-    full_tile_preds = np.zeros((16,16))
-    tile_size = options.tile_size_gt
-    for x in range(restitch_len):
-        for y in range(restitch_len):
-            st_path = Path(sat_path / f"{parent_tile_id}_{x}_{y}.npz")
-            subtile_pred, _ = get_subtile_preds(st_path,datamodule,model)
-            full_tile_preds[x*tile_size:(x+1)*tile_size,y*tile_size:(y+1)*tile_size] = subtile_pred
-
-
-    axs[2].set_title("Model Predictions")
-    axs[2].imshow(full_tile_preds,cmap=cmap, vmin=-0.5, vmax=3.5)
-
-    
-    # Set up the colorbar to the right of the images    
+    # Add color bar to the figure
     fig.subplots_adjust(right=0.8)
     cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
     cbar = fig.colorbar(im, cax=cbar_ax)
-    cbar.set_ticks([0,1,2,3])
-    cbar.set_ticklabels(['Sets, No Elec', 'No Sets, No Elec', 'Sets, W/ Elec', 'No Sets, W/ Elec'])
+    cbar.set_ticks([0, 1, 2, 3])
+    cbar.set_ticklabels(["Sttlmnts Wo Elec","No Sttlmnts Wo Elec","Sttlmnts W Elec","No Sttlmnts W Elec",])
     
-    if image_dir is None:
+    if results_dir is None:
         plt.show()
     else:
-        if not Path(image_dir).exists():
-            Path(image_dir).mkdir(parents=True,exist_ok = True)
-        plt.savefig(Path(image_dir) / f"{parent_tile_id}_restitched_visible_gt_predction.png")
+        results_dir.mkdir(parents=True, exist_ok=True)
+        fig.savefig(results_dir / f"{parent_tile_id}.png", format="png")
         plt.close()
 
-def restitch_eval(dir: str | os.PathLike, satellite_type: str, tile_id: str, range_x: Tuple[int, int], range_y: Tuple[int, int], datamodule, model) -> np.ndarray:
-    
+def restitch_eval(
+    processed_dir: Path, parent_tile_id: str, accelerator: str, datamodule, model
+) -> np.ndarray:
     """
-    Given a directory of processed subtiles, a tile_id and a satellite_type, 
-    this function will retrieve the tiles between (range_x[0],range_y[0])
-    and (range_x[1],range_y[1]) in order to stitch them together to their
-    original image. It will also get the tiles from the datamodule, evaluate
-    it with model, and stitch the ground truth and predictions together.
+    Restitches subtiles into a full image and predicts on the restitched image.
 
-    Input:
-        dir: str | os.PathLike
-            Directory where the subtiles are saved
-        satellite_type: str
-            Satellite type that will be stitched
-        tile_id: str
-            Tile id that will be stitched
-        range_x: Tuple[int, int]
-            Range of tiles that will be stitched on width dimension [0,5)]
-        range_y: Tuple[int, int]
-            Range of tiles that will be stitched on height dimension
-        datamodule: pytorch_lightning.LightningDataModule
-            Datamodule with the dataset
-        model: pytorch_lightning.LightningModule
-            LightningModule that will be evaluated
-    
-    Output:
-        stitched_image: np.ndarray
-            Stitched image, of shape (time, bands, width, height)
-        stitched_ground_truth: np.ndarray
-            Stitched ground truth of shape (width, height)
-        stitched_prediction_subtile: np.ndarray
-            Stitched predictions of shape (width, height)
+    Parameters
+    ----------
+    processed_dir : Path
+        Directory containing the processed subtiles.
+    parent_tile_id : str
+        Identifier for the parent tile.
+    accelerator : str
+        Either 'cpu' or 'gpu' to specify the computation device.
+    datamodule : DataModule
+        DataModule to handle the dataset.
+    model : nn.Module
+        Trained model used for prediction.
+
+    Returns
+    -------
+    subtile : Subtile
+        Subtile object containing the restitched image.
+    predictions_subtile : np.ndarray
+        Array of predictions from the model for each subtile.
     """
+
+    #Initialize the Subtile object
+    slice_size = datamodule.slice_size
+    subtile = Subtile(satellite_list=[], ground_truth=[], slice_size=slice_size, parent_tile_id=parent_tile_id)
+    subtile.restitch(processed_dir, datamodule.satellite_type_list)
+
+    # Set device based on accelerator
+    device = torch.device("cuda" if accelerator == "gpu" and torch.cuda.is_available() else "cpu")
+    model = model.to(device)
     
-    dir = Path(dir)
-    satellite_subtile = []
-    ground_truth_subtile = []
+    # Make predictions for each subtile
     predictions_subtile = []
-    satellite_metadata_from_subtile = []
-   
-    for i in range(*range_x):
-        satellite_subtile_row = []
-        ground_truth_subtile_row = []
+    for i in range(slice_size[0]):
         predictions_subtile_row = []
-        satellite_metadata_from_subtile_row = []
-        for j in range(*range_y):
-            subtile = Subtile().load(dir / 'Val' / 'subtiles' / f"{tile_id}_{i}_{j}.npz")
-            
-            st_path = Path(dir/'Val' / 'subtiles'/ f"{tile_id}_{i}_{j}.npz")
-            predictions, y = get_subtile_preds(st_path,datamodule,model)            
-            
-            ground_truth_subtile_row.append(y)
+        for j in range(slice_size[1]):
+            X, _ = retrieve_subtile_file(i, j, processed_dir, parent_tile_id, datamodule)
+            # You need to add a dimension of size 1 at dim 0 so that
+            # some CNN layers work
+            # i.e., (batch_size, channels, width, height) with batch_size = 1
+            X = X.reshape((1, X.shape[-3], X.shape[-2], X.shape[-1]))
+
+            predictions = model(X.float().to(device)).detach().cpu().numpy()
+
             predictions_subtile_row.append(predictions)
-            satellite_subtile_row.append(subtile.satellite_stack[satellite_type])
-            satellite_metadata_from_subtile_row.append(subtile.tile_metadata)
-
-        ground_truth_subtile.append(np.concatenate(ground_truth_subtile_row, axis=-1))
         predictions_subtile.append(np.concatenate(predictions_subtile_row, axis=-1))
-        satellite_subtile.append(np.concatenate(satellite_subtile_row, axis=-1))
-        satellite_metadata_from_subtile.append(satellite_metadata_from_subtile_row)
-    return np.concatenate(satellite_subtile, axis=-2), np.concatenate(ground_truth_subtile, axis=-2), np.concatenate(predictions_subtile, axis=-2)
+    
+    return subtile, np.concatenate(predictions_subtile, axis=-2)
 
-def get_subtiles_by_tile_id(dataset,tile_id):
-    subtiles = []
-    for subtile in dataset:
-        if subtile.metadata['tile_id'] == tile_id:
-            subtiles.append(subtile)
-    sorted_subtiles = sorted(subtiles, key=lambda sub: (sub['x_gt'],sub['y_gt']))
-    return sorted_subtiles
+def retrieve_subtile_file(
+    i: int, j: int, processed_dir: str, parent_tile_id: str, datamodule
+):
+    """
+    Retrieve a specific subtile file from the directory.
 
+    Parameters
+    ----------
+    i : int
+        X-coordinate of the subtile.
+    j : int
+        Y-coordinate of the subtile.
+    processed_dir : str
+        Directory containing the processed subtiles.
+    parent_tile_id : str
+        Identifier of the parent tile.
+    datamodule : DataModule
+        DataModule to handle the dataset.
+
+    Returns
+    -------
+    X : np.ndarray
+        The subtile data.
+    y : np.ndarray
+        The corresponding label.
+    """
+    subtile_file = processed_dir / "subtiles" / parent_tile_id / f"{i}_{j}"
+    if subtile_file in datamodule.train_dataset.subtile_dirs:
+        index = datamodule.train_dataset.subtile_dirs.index(subtile_file)
+        X, y = datamodule.train_dataset[index]
+    else:
+        index = datamodule.val_dataset.subtile_dirs.index(subtile_file)
+        X, y = datamodule.val_dataset[index]
+
+    return X, y
+
+'''def restitch_eval_csv(
+    processed_dir: Path, parent_tile_id: str, accelerator: str, datamodule, model
+) -> np.ndarray:
+    """ """
+    slice_size = datamodule.slice_size
+    subtile = Subtile(
+        satellite_list=[],
+        ground_truth=[],
+        slice_size=slice_size,
+        parent_tile_id=parent_tile_id,
+    )
+    subtile.restitch(processed_dir, datamodule.satellite_type_list)
+
+    predictions_subtile = []
+    for i in range(slice_size[0]):
+        predictions_subtile_row = []
+        for j in range(slice_size[1]):
+            X, _ = retrieve_subtile_file_csv(
+                i, j, processed_dir, parent_tile_id, datamodule
+            )
+            # You need to add a dimension of size 1 at dim 0 so that
+            # some CNN layers work
+            # i.e., (batch_size, channels, width, height) with batch_size = 1
+            X = X.reshape((1, X.shape[-3], X.shape[-2], X.shape[-1]))
+
+            predictions = None
+            if accelerator == "cpu":
+                predictions = model(X.float())
+            elif accelerator == "gpu":
+                predictions = model(X.float().cuda())
+            assert (
+                predictions != None
+            ), "accelerator passing not configured for restich_eval"
+
+            predictions = predictions.detach().cpu().numpy()
+
+            predictions_subtile_row.append(predictions)
+        predictions_subtile.append(np.concatenate(predictions_subtile_row, axis=-1))
+    return subtile, np.concatenate(predictions_subtile, axis=-2)'''
+
+def retrieve_subtile_file_csv(
+    x: int, y: int, processed_dir: str, parent_tile_id: str, datamodule
+):
+    """
+    Retrieve a specific subtile file for CSV processing.
+
+    Parameters
+    ----------
+    i : int
+        X-coordinate of the subtile.
+    j : int
+        Y-coordinate of the subtile.
+    processed_dir : str
+        Directory containing the processed subtiles.
+    parent_tile_id : str
+        Identifier of the parent tile.
+    datamodule : DataModule
+        DataModule to handle the dataset.
+
+    Returns
+    -------
+    X : np.ndarray
+        The subtile data.
+    y : np.ndarray
+        The corresponding label.
+    """
+    subtile_file = processed_dir / "subtiles" / parent_tile_id / f"{x}_{y}" 
+    index = datamodule.test_dataset.subtile_dirs.index(subtile_file)
+    X, y = datamodule.test_dataset[index]
+    return X, y

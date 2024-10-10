@@ -1,236 +1,173 @@
-""" Augmentations Implemented as Callable Classes."""
-
-import random
-from typing import Dict
-
 import cv2
 import numpy as np
 import torch
+import random
+from typing import Dict
 
 
-def apply_per_band(img, transform):
+def apply_per_band(img: np.ndarray, transform) -> np.ndarray:
     """
-    Helpful function to allow you to more easily implement
-    transformations that are applied to each band separately.
-    Not necessary to use, but can be helpful.
+    Apply a given transformation to each band of the input image separately.
+    
+    Parameters:
+        img (np.ndarray): The input image of shape (bands, width, height).
+        transform (function): The transformation function to apply to each band.
+    
+    Returns:
+        np.ndarray: The transformed image.
     """
     result = np.zeros_like(img)
     for band in range(img.shape[0]):
         transformed_band = transform(img[band].copy())
         result[band] = transformed_band
-
     return result
 
 
-class Blur(object):
+class Blur:
     """
-    Blurs each band separately using cv2.blur
+    Applies a blur filter to each band separately using OpenCV's cv2.blur.
 
     Parameters:
-        kernel: Size of the blurring kernel # kernal is the little matrix that slides over image (slidng window type stuff)
-        in both x and y dimensions, used
-        as the input of cv.blur
-
-    This operation is only done to the X input array.
+        kernel (int): Maximum size of the blurring kernel in both x and y dimensions.
+                      A random size between 1 and kernel will be used for each call.
     """
 
-    def __init__(self, kernel=3):
+    def __init__(self, kernel: int = 3):
         self.kernel = kernel
 
     def __call__(self, sample: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         """
-        Performs the blur transformation.
-
-        Input:
-            sample: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
-
-        Output:
-            transformed: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
+        Apply the blur transformation to the 'X' component of the sample.
+        
+        Parameters:
+            sample (Dict[str, np.ndarray]): Dictionary containing the 'X' (input image)
+                                            and 'y' (label/mask).
+        
+        Returns:
+            Dict[str, np.ndarray]: Dictionary with the blurred 'X' and unchanged 'y'.
         """
-        # Sample must have X and y in a dictionary format
-        # dimensions of img: (t, bands, tile_height, tile_width)
-        if "X" not in sample:
-            raise ValueError("The sample must have a key 'X'")
+        img, mask = sample["X"], sample["y"]
+        kernel_size = random.randint(1, self.kernel)
 
-        transformed_X = apply_per_band(
-            sample["X"], lambda x: cv2.blur(x, (self.kernel, self.kernel))
-        )
-        transformed_sample = {"X": transformed_X}
+        # Apply blur to each band of the image
+        img = apply_per_band(img, lambda x: cv2.blur(x, (kernel_size, kernel_size)))
 
-        if "y" in sample:
-            transformed_sample["y"] = sample["y"]
-        return transformed_sample
+        return {"X": img, "y": mask}
 
 
-class AddNoise(object):
+class AddNoise:
     """
-    Adds random gaussian noise using np.random.normal.
+    Adds random Gaussian noise to the input image.
 
     Parameters:
-        mean: float
-            Mean of the gaussian noise
-        std_lim: float
-            Maximum value of the standard deviation
+        mean (float): Mean of the Gaussian noise distribution.
+        std_lim (float): Maximum value for the standard deviation of the noise.
     """
 
-    def __init__(self, mean=0, std_lim=0.0):
+    def __init__(self, mean: float = 0, std_lim: float = 0.0):
         self.mean = mean
         self.std_lim = std_lim
 
-    def __call__(self, sample):
+    def __call__(self, sample: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         """
-        Performs the add noise transformation.
-        A random standard deviation is first calculated using
-        random.uniform to be between 0 and self.std_lim
+        Add Gaussian noise to the 'X' component of the sample.
 
-        Random noise is then added to each pixel with
-        mean self.mean and the standard deviation
-        that was just calculated
+        Parameters:
+            sample (Dict[str, np.ndarray]): Dictionary containing 'X' (input image) and 'y' (label/mask).
 
-        The resulting value is then clipped using
-        numpy's clip function to be values between
-        0 and 1.
-
-        This operation is only done to the X array.
-
-        Input:
-            sample: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
-
-        Output:
-            transformed: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
+        Returns:
+            Dict[str, np.ndarray]: Dictionary with noisy 'X' and unchanged 'y'.
         """
-        if "X" not in sample:
-            raise ValueError("The sample must have a key 'X'")
+        img, mask = sample["X"], sample["y"]
 
-        random_std = random.uniform(0, self.std_lim)
-        transformed_X = apply_per_band(
-            sample["X"],
-            lambda x: np.clip(
-                x + np.random.normal(self.mean, random_std, x.shape), 0, 1
-            ),
-        )
-        transformed_sample = {"X": transformed_X}
+        # Calculate random standard deviation for noise
+        std_dev = random.uniform(0, self.std_lim)
+        
+        # Add Gaussian noise to the image
+        noise = np.random.normal(self.mean, std_dev, size=img.shape)
+        img = np.clip(img + noise, 0, 1)  # Ensure pixel values stay between 0 and 1
 
-        if "y" in sample:
-            transformed_sample["y"] = sample["y"]
-
-        return transformed_sample
+        return {"X": img.astype(np.float32), "y": mask}
 
 
-class RandomVFlip(object):
+class RandomVFlip:
     """
-    Randomly flips all bands vertically in an image with probability p.
+    Randomly flip all bands vertically with a given probability.
 
     Parameters:
-        p: probability of flipping image.
+        p (float): Probability of flipping the image vertically (default is 0.5).
     """
 
-    def __init__(self, p=0.5):
+    def __init__(self, p: float = 0.5):
         self.p = p
 
-    def __call__(self, sample):
+    def __call__(self, sample: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         """
-        Performs the random flip transformation using cv.flip.
+        Vertically flip the 'X' and 'y' components of the sample with probability p.
 
-        Input:
-            sample: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
+        Parameters:
+            sample (Dict[str, np.ndarray]): Dictionary containing 'X' (input image) and 'y' (label/mask).
 
-        Output:
-            transformed: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
+        Returns:
+            Dict[str, np.ndarray]: Dictionary with flipped 'X' and 'y' (if flip occurs).
         """
-        if "X" not in sample:
-            raise ValueError("The sample must have a key 'X'")
+        img, mask = sample["X"], sample["y"]
 
-        if random.random() < self.p:
-            transformed_X = apply_per_band(sample["X"], lambda x: cv2.flip(x, 0))
-        else:
-            transformed_X = sample["X"].copy()
+        if random.random() <= self.p:
+            # Apply vertical flip to each band of the image
+            img = apply_per_band(img, lambda x: cv2.flip(x, 0))
+            # Apply vertical flip to the mask
+            mask = cv2.flip(mask, 0)
 
-        transformed_sample = {"X": transformed_X}
-
-        if "y" in sample:
-            transformed_sample["y"] = apply_per_band(
-                sample["y"], lambda x: cv2.flip(x, 0)
-            )
-        return transformed_sample
+        return {"X": img, "y": mask}
 
 
-class RandomHFlip(object):
+class RandomHFlip:
     """
-    Randomly flips all bands horizontally in an image with probability p.
+    Randomly flip all bands horizontally with a given probability.
 
     Parameters:
-        p: probability of flipping image.
+        p (float): Probability of flipping the image horizontally (default is 0.5).
     """
 
-    def __init__(self, p=0.5):
+    def __init__(self, p: float = 0.5):
         self.p = p
 
-    def __call__(self, sample):
+    def __call__(self, sample: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         """
-        Performs the random flip transformation using cv.flip.
+        Horizontally flip the 'X' and 'y' components of the sample with probability p.
 
-        Input:
-            sample: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
+        Parameters:
+            sample (Dict[str, np.ndarray]): Dictionary containing 'X' (input image) and 'y' (label/mask).
 
-        Output:
-            transformed: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
+        Returns:
+            Dict[str, np.ndarray]: Dictionary with flipped 'X' and 'y' (if flip occurs).
         """
-        if "X" not in sample:
-            raise ValueError("The sample must have a key 'X'")
+        img, mask = sample["X"], sample["y"]
 
-        if random.random() < self.p:
-            transformed_X = apply_per_band(sample["X"], lambda x: cv2.flip(x, 1))
-        else:
-            transformed_X = sample["X"].copy()
+        if random.random() <= self.p:
+            # Apply horizontal flip to each band of the image
+            img = apply_per_band(img, lambda x: cv2.flip(x, 1))
+            # Apply horizontal flip to the mask
+            mask = cv2.flip(mask, 1)
 
-        transformed_sample = {"X": transformed_X}
-
-        if "y" in sample:
-            transformed_sample["y"] = apply_per_band(
-                sample["y"], lambda x: cv2.flip(x, 1)
-            )
-
-        return transformed_sample
+        return {"X": img, "y": mask}
 
 
-class ToTensor(object):
+class ToTensor:
     """
-    Converts numpy.array to torch.tensor
+    Converts numpy arrays to torch tensors.
     """
 
-    def __call__(self, sample):
+    def __call__(self, sample: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
         """
-        Transforms all numpy arrays to tensors
+        Convert 'X' and 'y' from numpy arrays to torch tensors.
 
-        Input:
-            sample: Dict[str, np.ndarray]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
+        Parameters:
+            sample (Dict[str, np.ndarray]): Dictionary containing 'X' (input image) and 'y' (label/mask).
 
-        Output:
-            transformed: Dict[str, torch.Tensor]
-                Has two keys, 'X' and 'y'.
-                Each of them has shape (bands, width, height)
+        Returns:
+            Dict[str, torch.Tensor]: Dictionary with 'X' and 'y' as torch tensors.
         """
-        transformed = {}
-        for k, v in sample.items():
-            transformed[k] = torch.from_numpy(v)
-
-        return transformed
+        img, mask = sample["X"], sample["y"]
+        return {"X": torch.from_numpy(img), "y": torch.from_numpy(mask)}

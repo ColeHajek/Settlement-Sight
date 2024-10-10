@@ -1,232 +1,116 @@
 import torch
 import pytorch_lightning as pl
+import torchmetrics
+import torch.nn.functional as F
 
-from torch.nn import functional as F
-from torchmetrics import Accuracy
-from torchmetrics.classification import MulticlassAUROC, MulticlassF1Score
-
-from src.models.supervised.segmentation_cnn import SegmentationCNN
 from src.models.supervised.unet import UNet
 from src.models.supervised.resnet_transfer import FCNResnetTransfer
+from src.models.supervised.segmentation_cnn import SegmentationCNN
 
 class ESDSegmentation(pl.LightningModule):
-    """
-    LightningModule for training a segmentation model on the ESD dataset
-    """
-    def __init__(self, model_type, in_channels, out_channels, class_weights=None,
-                 learning_rate=1e-3, model_params: dict = {}):
-        """
-        Initializes the model with the given parameters.
-
-        Input:
-        model_type (str): type of model to use, one of "SegmentationCNN",
-        "UNet", or "FCNResnetTransfer"
-        in_channels (int): number of input channels of the image of shape
-        (batch, in_channels, width, height)
-        out_channels (int): number of output channels of prediction, prediction
-        is shape (batch, out_channels, width//scale_factor, height//scale_factor)
-        learning_rate (float): learning rate of the optimizer
-        model_params (dict): dictionary of parameters to pass to the model
-        """
+    def __init__(
+        self,
+        model_type,
+        in_channels,
+        out_channels,
+        learning_rate=1e-3,
+        model_params: dict = {},
+        lambda_l1=0.01
+    ):
         super().__init__()
         self.save_hyperparameters()
-        self.class_weights = class_weights
         self.learning_rate = learning_rate
-
-        if model_type == "SegmentationCNN":
-            self.model = SegmentationCNN(in_channels,out_channels, **model_params)
-        elif model_type == "UNet":
-            self.model = UNet(in_channels, out_channels, **model_params)
-        elif model_type == "FCNResnetTransfer":
-            self.model = FCNResnetTransfer(in_channels, out_channels, **model_params)
+        self.lambda_l1 = lambda_l1
+        
+        # Initialize model based on the model_type parameter
+        if model_type.lower() == "unet":
+            self.model = UNet(in_channels=in_channels, out_channels=out_channels, **model_params)
+        elif model_type.lower() == "segmentation_cnn":
+            self.model = SegmentationCNN(in_channels=in_channels, out_channels=out_channels, **model_params)
+        elif model_type.lower() == "fcn_resnet_transfer":
+            self.model = FCNResnetTransfer(in_channels=in_channels, out_channels=out_channels, **model_params)
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
-        
-        ## Performance Metrics ##
-        
-        # Accuracy
-        self.avg_acc = Accuracy(task='multiclass',num_classes=out_channels)
-        self.per_class_acc = Accuracy(task='multiclass',num_classes=out_channels,average=None)
 
-        # Area Under Curve
-        self.avg_AUC = MulticlassAUROC(num_classes=out_channels,average='macro',thresholds=None)
-        self.per_class_AUC = MulticlassAUROC(num_classes=out_channels,average='none',thresholds=None)
+        # Initialize the performance metrics for the semantic segmentation task
+        self.train_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=out_channels)
+        self.val_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=out_channels)
+        self.train_f1_score = torchmetrics.classification.MulticlassF1Score(num_classes=out_channels, average="weighted")
+        self.val_f1_score = torchmetrics.classification.MulticlassF1Score(num_classes=out_channels, average="weighted")
 
-        # F1 Score
-        self.avg_F1Score = MulticlassF1Score(num_classes = out_channels)
-        self.per_class_F1Score = MulticlassF1Score(num_classes=out_channels,average=None)
+        # Class-wise metrics
+        self.train_classwise_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=out_channels, average=None)
+        self.val_classwise_accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=out_channels, average=None)
+        self.train_classwise_f1_score = torchmetrics.classification.MulticlassF1Score(num_classes=out_channels, average=None)
+        self.val_classwise_f1_score = torchmetrics.classification.MulticlassF1Score(num_classes=out_channels, average=None)
 
-
-    
     def forward(self, X):
-        """
-        Run the input X through the model
+        X = torch.nan_to_num(X)
+        return self.model(X)
 
-        Input: X, a (batch, input_channels, width, height) image
-        Ouputs: y, a (batch, output_channels, width/scale_factor, height/scale_factor) image
-        """
-        y_pred = self.model.forward(X)
-        return y_pred # list of probabilitiels falls under each class 
-   
+    def l1_regularization(self):
+        l1_penalty = sum(torch.sum(torch.abs(param)) for param in self.model.parameters())
+        return self.lambda_l1 * l1_penalty
 
-        
+    def compute_and_log_metrics(self, preds, target, prefix):
+        """
+        Helper function to compute loss and log metrics.
+        Args:
+            preds: Predictions from the model.
+            target: Ground truth labels.
+            prefix: "train" or "val" to specify the phase for logging.
+        """
+        # Compute cross-entropy loss with L1 regularization
+        loss = F.cross_entropy(preds, target) + self.l1_regularization()
+        self.log(f'{prefix}_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+
+        # Compute and log accuracy
+        if prefix == "train":
+            acc = self.train_accuracy(preds, target)
+            f1 = self.train_f1_score(preds, target)
+            classwise_acc = self.train_classwise_accuracy(preds, target)
+            classwise_f1 = self.train_classwise_f1_score(preds, target)
+        else:  # val
+            acc = self.val_accuracy(preds, target)
+            f1 = self.val_f1_score(preds, target)
+            classwise_acc = self.val_classwise_accuracy(preds, target)
+            classwise_f1 = self.val_classwise_f1_score(preds, target)
+
+        # Log overall accuracy and F1 score
+        self.log(f'{prefix}_accuracy', acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(f'{prefix}_f1_score', f1, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+
+        # Log class-wise metrics
+        for class_idx in range(len(classwise_acc)):
+            self.log(f'{prefix}_class_accuracy_{class_idx+1}', classwise_acc[class_idx], on_step=False, on_epoch=True, prog_bar=True, logger=True)
+            self.log(f'{prefix}_class_f1_score_{class_idx+1}', classwise_f1[class_idx], on_step=False, on_epoch=True, prog_bar=True, logger=True)
+
+        return loss
+
     def training_step(self, batch, batch_idx):
         """
-        Gets the current batch, which is a tuple of
-        (sat_img, mask, metadata), predicts the value with
-        self.forward, then uses CrossEntropyLoss to calculate
-        the current loss.
-
-        Note: CrossEntropyLoss requires mask to be of type
-        torch.int64 and shape (batches, width, height), 
-        it only has one channel as the label is encoded as
-        an integer index. As these may not be this shape and
-        type from the dataset, you might have to use
-        torch.reshape or torch.squeeze in order to remove the
-        extraneous dimensions, as well as using Tensor.to to
-        cast the tensor to the correct type.
-
-        Note: The type of the tensor input to the neural network
-        must be the same as the weights of the neural network.
-        Most often than not, the default is torch.float32, so
-        if you haven't casted the data to be float32 in the
-        dataset, do so before calling forward.
-
-        Input:
-            batch: tuple containing (sat_img, mask, metadata).
-                sat_img: Batch of satellite images from the dataloader,
-                of shape (batch, input_channels, width, height)
-                mask: Batch of target labels from the dataloader,
-                by default of shape (batch, 1, width, height)
-                metadata: List[SubtileMetadata] of length batch containing 
-                the metadata of each subtile in the batch. You may not
-                need this.
-
-            batch_idx: int indexing the current batch's index. You may
-            not need this input, but it's part of the class' interface.
-
-        Output:
-            train_loss: torch.tensor of shape (,) (i.e, a scalar tensor).
-            Gradients will not propagate unless the tensor is a scalar tensor.
+        Training step for the model. Computes and logs metrics for training.
         """
-        sat_img, target, metadata = batch
-        target = target.squeeze(1)
-        target = target.to(torch.int64)
+        sat_img, target = batch
+        target = target.squeeze(1).to(torch.int64)  # Ensure correct shape and type
+        preds = self(sat_img)  # Forward pass
 
-        preds = self.forward(sat_img)
-        
-        if self.class_weights is not None:
-            loss = F.cross_entropy(preds, target, weight=self.class_weights)
-        else:
-            loss = F.cross_entropy(preds, target)
-        
-        ## Record Performance Metrics ##
-        self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True, enable_graph=True)
-
-        # Accuracy
-        acc = self.avg_acc(preds, target)
-        per_class_acc = self.per_class_acc(preds,target)
-        
-        self.log('train_acc', acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-        for c in range(4):
-            label = 'train_class_' + str(c+1) + '_acc'
-            self.log(label, per_class_acc[c], on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-        
-        # Area Under Curve
-        auc = self.avg_AUC(preds,target)
-        per_class_auc = self.per_class_AUC(preds,target)
-
-        self.log('train_area_under_curve',auc,on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-        for c in range(4):
-            label = 'train_class_' + str(c+1) + '_area_under_curve'
-            self.log(label,per_class_auc[c],on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-
-        # F1 Score
-        f1 = self.avg_F1Score(preds,target)
-        per_class_f1 = self.per_class_F1Score(preds,target)
-        
-        self.log('train_f1',f1,on_step=False, on_epoch=True, prog_bar=True, logger=True,enable_graph=True)
-        for c in range(4):
-            label = 'train_class_' + str(c+1) + '_f1'
-            self.log(label,per_class_f1[c],on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-        
+        # Compute and log training loss and metrics
+        loss = self.compute_and_log_metrics(preds, target, prefix="train")
         return loss
-    
-    
+
     def validation_step(self, batch, batch_idx):
         """
-        Gets the current batch, which is a tuple of
-        (sat_img, mask, metadata), predicts the value with
-        self.forward, then evaluates the 
-
-        Note: The type of the tensor input to the neural network
-        must be the same as the weights of the neural network.
-        Most often than not, the default is torch.float32, so
-        if you haven't casted the data to be float32 in the
-        dataset, do so before calling forward.
-
-        Input:
-            batch: tuple containing (sat_img, mask, metadata).
-                sat_img: Batch of satellite images from the dataloader,
-                of shape (batch, input_channels, width, height)
-                mask: Batch of target labels from the dataloader,
-                by default of shape (batch, 1, width, height)
-                metadata: List[SubtileMetadata] of length batch containing 
-                the metadata of each subtile in the batch. You may not
-                need this.
-
-            batch_idx: int indexing the current batch's index. You may
-            not need this input, but it's part of the class' interface.
-
-        Output:
-            val_loss: torch.tensor of shape (,) (i.e, a scalar tensor).
-            Should be the cross_entropy_loss, as it is the main validation
-            loss that will be tracked.
-            Gradients will not propagate unless the tensor is a scalar tensor.
+        Validation step for the model. Computes and logs metrics for validation.
         """
-        sat_img, target, batch_metadata = batch
-        target = target.squeeze(1)
-        target = target.to(torch.int64)
+        sat_img, target = batch
+        target = target.squeeze(1).to(torch.int64)  # Ensure correct shape and type
+        preds = self(sat_img)  # Forward pass
 
-        sat_img = sat_img.float()
-        
-        preds = self.forward(sat_img)
-
-        loss = F.cross_entropy(preds, target)
-        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, enable_graph=True)
-        
-        ## Record Performance Metrics ##
-
-        # Accuracy
-        acc = self.avg_acc(preds, target)
-        per_class_acc = self.per_class_acc(preds,target)
-        
-        self.log('val_acc', acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-        for c in range(4):
-            label = 'val_class_' + str(c+1) + '_acc'
-            self.log(label, per_class_acc[c], on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-        
-        # Area Under Curve
-        auc = self.avg_AUC(preds,target)
-        per_class_auc = self.per_class_AUC(preds,target)
-
-        self.log('val_area_under_curve',auc,on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-        for c in range(4):
-            label = 'val_class_' + str(c+1) + '_area_under_curve'
-            self.log(label,per_class_auc[c],on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-
-        # F1 Score
-        f1 = self.avg_F1Score(preds,target)
-        per_class_f1 = self.per_class_F1Score(preds,target)
-        
-        self.log('val_f1',f1,on_step=False, on_epoch=True, prog_bar=True, logger=True,enable_graph=True)
-        for c in range(4):
-            label = 'val_class_' + str(c+1) + '_f1'
-            self.log(label,per_class_f1[c],on_step=False, on_epoch=True, prog_bar=True, logger=True, enable_graph=True)
-        
+        # Compute and log validation loss and metrics
+        loss = self.compute_and_log_metrics(preds, target, prefix="val")
         return loss
-    
-    #if it has been 2 epochs and val_loss hasn't decreased then decrease the learning rate to better find a minima
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2, verbose=True)
@@ -236,6 +120,6 @@ class ESDSegmentation(pl.LightningModule):
                 'scheduler': scheduler,
                 'interval': 'epoch',
                 'frequency': 1,
-                'monitor': 'val_loss',  # Make sure to log 'val_loss' in your validation_step
+                'monitor': 'val_loss',
             }
         }

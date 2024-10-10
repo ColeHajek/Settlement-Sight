@@ -1,72 +1,78 @@
-from torchvision.models.segmentation import FCN, fcn_resnet101
-from torchvision.models._utils import IntermediateLayerGetter
+from torchvision.models.segmentation import fcn_resnet101
 import torch
 from torch import nn
 
 class FCNResnetTransfer(nn.Module):
+    """
+    A modified version of the FCN-ResNet101 model from the torchvision library for custom segmentation tasks.
+
+    This class adapts the FCN-ResNet101 model by replacing its first and last convolutional layers to match
+    custom input and output channels. Additionally, an average pooling layer is added at the end to resize
+    the output based on a given scale factor.
+
+    Parameters
+    ----------
+    input_channels : int
+        Number of input channels in the input image (e.g., 3 for RGB or 57 for multispectral images).
+    output_channels : int
+        Number of output channels in the prediction (e.g., number of classes for segmentation).
+    scale_factor : int, optional
+        Scaling factor for the final output, used to downscale the segmentation result, by default 50.
+
+    Note
+    ----
+    The original FCN-ResNet101 is designed for semantic segmentation tasks where the output is of the same
+    resolution as the input. This class adds an additional pooling layer to downscale the final output.
+    """
+
     def __init__(self, input_channels, output_channels, scale_factor=50, **kwargs):
-        """
-        Loads the fcn_resnet101 model from torch hub,
-        then replaces the first and last layer of the network
-        in order to adapt it to our current problem, 
-        the first convolution of the fcn_resnet must be changed
-        to an input_channels -> 64 Conv2d with (7,7) kernel size,
-        (2,2) stride, (3,3) padding and no bias.
+        super(FCNResnetTransfer, self).__init__()
 
-        The last layer must be changed to be a 512 -> output_channels
-        conv2d layer, with (1,1) kernel size and (1,1) stride. 
+        # Load the FCN-ResNet101 model with pretrained weights
+        fcn_model = fcn_resnet101(pretrained=True, pretrained_backbone=True)
 
-        A final pooling layer must then be added to pool each 50x50
-        patch down to a 1x1 image, as the original FCN resnet is trained to
-        have the segmentation be the same resolution as the input.
-        
-        Input:
-            input_channels: number of input channels of the image
-            of shape (batch, input_channels, width, height)
-            output_channels: number of output channels of prediction,
-            prediction is shape (batch, output_channels, width//scale_factor, height//scale_factor)
-            scale_factor: number of input pixels that map to 1 output pixel,
-            for example, if the input is 800x800 and the output is 16x6
-            then the scale factor is 800/16 = 50.
-        """
-        super(FCNResnetTransfer,self).__init__()
-        # Load the model fcn_resnet101 from segmentation model weights from online like torch.hub
-        fcn_model = fcn_resnet101(pretrained=True,pretrained_backbone=True)
-        
-        # Replace the first and last layer of the network so that the number of channels fits with
-        # the number of channels of the image and the number of classes we are predicting
+        # Replace the first convolutional layer to accept the specified number of input channels
+        # The original model expects 3 input channels; we adjust this to input_channels
+        self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
-        # First layer
-        self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=(7,7),
-                                     stride=(2,2), padding=(3,3),bias=False)
-        
-        # Middle layers
+        # Extract the middle layers of the FCN-ResNet101 model
+        # Use the backbone layers except for the first conv layer (replaced above) and the last layers
         self.classifier = nn.Sequential(*list(fcn_model.backbone.children())[1:-2])
-        
-        # Output layers
-        self.conv2 = nn.Conv2d(in_channels=512,out_channels=output_channels,kernel_size=(1,1), stride=(1,1))
-        self.pool = nn.AvgPool2d(kernel_size=(25//4,25//4))
-      
+
+        # Replace the last convolutional layer to output the desired number of classes (output_channels)
+        # The original model outputs 21 classes (for the COCO dataset), but we set it to output_channels
+        self.conv2 = nn.Conv2d(in_channels=512, out_channels=output_channels, kernel_size=(1, 1), stride=(1, 1))
+
+        # Final average pooling layer to scale down the output to the required resolution
+        # This depends on the input image resolution and the scale_factor provided
+        self.pool = nn.AvgPool2d(kernel_size=(25 // 4, 25 // 4))
+
     def forward(self, x):
         """
-        Runs predictions on the modified FCN resnet
-        followed by pooling
+        Forward pass of the FCN-ResNet model with custom input and output layers.
 
-        Input:
-            x: image to run a prediction of, of shape
-            (batch, self.input_channels, width, height)
-            with width and height divisible by
-            self.scale_factor
-        Output:
-            pred_y: predicted labels of size
-            (batch, self.output_channels, width//self.scale_factor, height//self.scale_factor)
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch, input_channels, width, height), where
+            width and height should be divisible by `scale_factor`.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor of shape (batch, output_channels, width//scale_factor, height//scale_factor).
         """
+
+        # Apply the custom first convolutional layer
         y_pred = self.conv1(x)
-        
+
+        # Pass through the modified middle layers (feature extraction)
         y_pred = self.classifier(y_pred)
 
+        # Apply the custom output convolutional layer to get the desired number of classes
         y_pred = self.conv2(y_pred)
 
+        # Pool the output to match the required resolution based on scale_factor
         y_pred = self.pool(y_pred)
 
         return y_pred

@@ -1,224 +1,123 @@
-import os
-import re
 import sys
-from copy import deepcopy
 from pathlib import Path
-from typing import Dict, List
-from collections import Counter
+from typing import List, Tuple
+
 import numpy as np
-import pyprojroot
 from torch.utils.data import Dataset
+from torchvision import transforms as torchvision_transforms
 
-from ..preprocessing.subtile_esd import Subtile, TileMetadata
+# Local modules
+sys.path.append(".")
+from src.preprocessing.subtile import Subtile
+from src.utilities import SatelliteType
 
-sys.path.append(pyprojroot.here())
 
-
-class DSE(Dataset):
+class ESDDataset(Dataset):
     """
-    Custom dataset for the IEEE GRSS 2021 ESD dataset.
-
-    args:
-        root_dir: str | os.PathLike
-            Location of the processed subtiles
-        selected_bands: Dict[str, List[str]] | None
-            Dictionary mapping satellite type to list of bands to select
-        transform: callable, optional
-            Object that applies augmentations to a sample of the data
-    attributes:
-        root_dir: str | os.PathLike
-            Location of the processed subtiles
-        tiles: List[Path]
-            List of paths to the subtiles
-        transform: callable
-            Object that applies augmentations to the sample of the data
-
+    A PyTorch Dataset class for handling satellite image subtiles in DataLoader batches.
+    
+    Attributes:
+        processed_dir (Path): Path to the directory containing processed subtiles.
+        transform (Compose): Composition of image transformations to be applied.
+        satellite_type_list (List[SatelliteType]): List of satellite types to include.
+        slice_size (Tuple[int, int]): Size of subtiles.
+        subtile_dirs (List[Path]): List of paths to individual subtiles.
+        
+    Methods:
+        __len__() -> int:
+            Returns the number of subtiles in the dataset.
+            
+        __getitem__(idx: int) -> Tuple[np.ndarray, np.ndarray]:
+            Retrieves and processes the subtile at the specified index, 
+            applying transformations and returning the input and target tensors.
     """
 
     def __init__(
         self,
-        root_dir: str | os.PathLike,
-        selected_bands: Dict[str, List[str]] | None = None,
-        transform=None,
-    ):
-        self.root_dir = root_dir
-        self.selected_bands = selected_bands
+        processed_dir: Path,
+        transform: torchvision_transforms.transforms.Compose,
+        satellite_type_list: List[SatelliteType],
+        slice_size: Tuple[int, int] = (4, 4),
+    ) -> None:
+        """
+        Initialize the ESDDataset with the processed directory and configurations.
+        
+        Parameters:
+            processed_dir (Path): Path to the directory containing processed subtiles.
+            transform (Compose): Composition of image transformations to be applied.
+            satellite_type_list (List[SatelliteType]): List of satellite types to include.
+            slice_size (Tuple[int, int]): Size of subtiles for each image (default: (4, 4)).
+        """
         self.transform = transform
-        tile_list = list(Path(self.root_dir/ 'subtiles').glob("*"))
+        self.satellite_type_list = satellite_type_list
+        self.slice_size = slice_size
+
+        # Gather the paths of all subtiles within the processed directory
+        self.subtile_dirs = []
+        for tile_dir in processed_dir.iterdir():
+            # Iterate through each tile directory to access individual subtiles
+            for subtile_dir in tile_dir.iterdir():
+                for subtile in subtile_dir.iterdir():
+                    # Append each subtile path to the subtile_dirs list
+                    self.subtile_dirs.append(subtile)
+
+    def __len__(self) -> int:
+        """
+        Returns the number of subtiles in the dataset.
         
-        self.tiles = sorted(
-            tile_list,
-            key=lambda path: tuple(
-                map(int, re.findall(r"Tile(\d+)_(\d+)_(\d+)\.npz", str(path.name))[0])
-            ),
-        )
+        Returns:
+            int: Total number of subtiles.
+        """
+        return len(self.subtile_dirs)
+
+    def __aggregate_time(self, array: np.ndarray) -> np.ndarray:
+        """
+        Combine the time and band dimensions of the array for model input.
         
-    def count_frequencies(self):
-        class_counts = Counter()
-        for tile in self.tiles:
-            subtile_instance = Subtile()
-            loaded_subtile = subtile_instance.load(Path(tile))
-            gt_data = loaded_subtile.satellite_stack["gt"][0, 0, :, :]
-            class_counts.update(gt_data.flatten())
-        return class_counts
-    def __len__(self):
-        """
-        Returns number of tiles in the dataset
-
-        Output: int
-            length: number of tiles in the dataset
-        """
-        return len(self.tiles)
-
-    def __aggregate_time(self, img):
-        """
-        Aggregates time dimension in order to
-        feed it to the machine learning model.
-
-        This function needs to be changed in the
-        final project to better suit your needs.
-
-        For homework 2, you will simply stack the time bands
-        such that the output is shaped (time*bands, width, height),
-        i.e., all the time bands are treated as a new band.
-
-        Input:
-            img: np.ndarray
-                (time, bands, width, height) array
-        Output:
-            new_img: np.ndarray
-                (time*bands, width, height) array
-        """
-        time, bands, width, height = img.shape
-        new_img = img.reshape(time * bands, width, height)
-        return new_img
-
-    def __select_indices(self, bands: List[str], selected_bands: List[str]):
-        """
-        Selects the indices of the bands used.
-
-        Input:
-            bands: List[str]
-                list of bands in the order that they are stacked in the
-                corresponding satellite stack
-            selected_bands: List[str]
-                list of bands that have been selected
-
-        Output:
-            bands_indices: List[int]
-                index location of selected bands
-        """
-        indx = [bands.index(elem) for elem in selected_bands]
-        return indx
-
-    def __select_bands(self, subtile):
-        """
-        Aggregates time dimension in order to
-        feed it to the machine learning model.
-
-        This function needs to be changed in the
-        final project to better suit your needs.
-
-        For homework 2, you will simply stack the time bands
-        such that the output is shaped (time*bands, width, height),
-        i.e., all the time bands are treated as a new band.
-
-        Input:
-            subtile: Subtile object
-                (time, bands, width, height) array
-        Output:
-            selected_satellite_stack: Dict[str, np.ndarray]
-                satellite--> np.ndarray with shape (time, bands, width, height) array
-
-            new_metadata: TileMetadata
-                Updated metadata with only the satellites and bands that were picked
-        """
-        new_metadata = deepcopy(subtile.tile_metadata)
-
-        if self.selected_bands is not None:
-            selected_satellite_stack = {}
-            new_metadata.satellites = {}
-
-            for key in self.selected_bands:
-                satellite_bands = subtile.tile_metadata.satellites[key].bands
-                selected_bands = self.selected_bands[key]
-
-                indices = self.__select_indices(satellite_bands, selected_bands)
-                new_metadata.satellites[key] = subtile.tile_metadata.satellites[key]
-
-                subtile.tile_metadata.satellites[key].bands = self.selected_bands[key]
-                selected_satellite_stack[key] = subtile.satellite_stack[key][
-                    :, indices, :, :
-                ]
-        else:
-            selected_satellite_stack = subtile.satellite_stack
-
-        return selected_satellite_stack, new_metadata
-
-    def __getitem__(self, idx: int,transform_all=False) -> tuple[np.ndarray, np.ndarray, TileMetadata]:
-        """
-        Loads subtile at index idx, then
-            - selects bands
-            - aggregates times
-            - stacks satellites
-            - performs self.transform
-
-        Input:
-            idx: int
-                index of subtile with respect to self.tiles
-
-        Output:
-            X: np.ndarray | torch.Tensor
-                input data to ML model, of shape (time*bands, width, height)
-            y: np.ndarray | torch.Tensor
-                ground truth, of shape (1, width, height)
-            tile_metadata:
-                corresponding tile metadata
-        """
-        # Load the subtiles using the Subtile class in
-        # src/preprocessing/subtile_esd_hw02.py
-        tile_path = self.tiles[idx]
+        This method reshapes an array of shape (time, bands, width, height) to 
+        (time*bands, width, height) to flatten the time and band dimensions.
         
-        tile_number = re.findall(r"Tile(\d+)",str(tile_path))[0]
-        tile_number = int(re.findall(r'\d+',tile_number)[0])
+        Parameters:
+            array (np.ndarray): Array of shape (time, bands, width, height).
+            
+        Returns:
+            np.ndarray: Flattened array of shape (time*bands, width, height).
+        """
+        return array.reshape(array.shape[0] * array.shape[1], array.shape[2], array.shape[3])
 
-        subtile_instance = Subtile()
-        loaded_subtile = subtile_instance.load(tile_path)
+    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Retrieves a subtile at a specified index, aggregates the time bands, 
+        applies transformations, and returns the input data and ground truth labels.
+        
+        Parameters:
+            idx (int): Index of the subtile to retrieve.
+            
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Transformed input data and target labels.
+        """
+        # Load the subtile data from the directory at the specified index
+        subtile = Subtile.load_subtile_by_dir(self.subtile_dirs[idx], self.satellite_type_list, self.slice_size)
 
-        # Select the bands and satellites
-        selected_bands, selected_bands_metadata = self.__select_bands(loaded_subtile)
+        # Extract satellite data arrays and ground truth from the subtile
+        data_array_list = subtile.satellite_list
+        ground_truth = subtile.ground_truth
 
-        # Stack the time dimension with the bands
-        aggregated_data = []
-        for satellite_name, satellite_data in selected_bands.items():
-            if satellite_name != "gt":  # Skip ground truth data
-                aggregated = self.__aggregate_time(satellite_data)
-                aggregated_data.append(aggregated)
+        # Convert xarray data to numpy arrays for processing
+        data_values_list = [data.values for data in data_array_list]
+        ground_truth_values = ground_truth.values
 
-        X = np.concatenate(aggregated_data, axis=0)
+        # Aggregate the time bands for each satellite data array
+        X = [self.__aggregate_time(data) for data in data_values_list]
+        X = np.concatenate(X, axis=0)  # Concatenate along the band dimension
 
-        # If you have a transform, apply it
-        # Concatenate the time and bands
-        # Adjust the y ground truth to be the same shape as the X data by
-        # removing the time dimension
-        # all timestamps are treated and stacked as bands
-        gt = loaded_subtile.satellite_stack["gt"]
-        y = np.zeros((1, gt.shape[-2], gt.shape[-1]))
-        y[0, :, :] = gt[0, 0, :, :]
+        # Squeeze ground truth dimensions to get shape (width, height)
+        y = np.squeeze(ground_truth_values, axis=(0, 1))
 
-        # Change the range of y from 1-4 to 0-3 to conform with pytorch's zero indexing
-        y -= 1
-        # If there is a transform, apply it to both X and y
-        if self.transform is not None:
-            if transform_all:
-                # Apply transforms to all tiles
-                transformed = self.transform({"X": X, "y": y})
-                X = transformed["X"]
-                y = transformed["y"]
-            elif tile_number > 60:
-                # Else only apply transforms to half the tiles
-                transformed = self.transform({"X": X, "y": y})
-                X = transformed["X"]
-                y = transformed["y"]
+        # If transformations are provided, apply them to the input and labels
+        if self.transform:
+            transformed_sample = self.transform({"X": X, "y": y})
+            X, y = transformed_sample["X"], transformed_sample["y"]
 
-        return X, y, selected_bands_metadata
+        # Return input data and ground truth labels (zero-indexed)
+        return X, y - 1
