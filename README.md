@@ -1,3 +1,7 @@
+# Note:
+This readme file is for a previous version of settlement sight (https://github.com/cs175cv-w2024/final-project-the-thunder-men) it mostly holds up but take it with a grain of salt
+
+
 # Semantic Segmentation for Subsaharan Satellite Images
 
 This project aims to create a model which can accurately label pixels in satellite images by one of four class labels:
