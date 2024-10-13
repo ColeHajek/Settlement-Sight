@@ -294,17 +294,31 @@ def maxprojection_viirs(data_array: xr.DataArray) -> xr.DataArray:
     xr.DataArray
         Max projection of the VIIRS data_array. The shape of the array is (date, band, height, width)
     """
-     # Compute the maximum projection along the date axis (time dimension) for the single band.
-    max_projection = data_array.max(dim="date", skipna=True)
+    # set the band index to 0 (VIIRS only has 1 band)
+    bandInd = 0
+    # set the maximum to the first image (date, band) from the data_array
+    maxImg = data_array[0][bandInd]
 
-    # Reshape the maximum projection to fit the expected (1, 1, height, width) format.
-    max_projection = max_projection.expand_dims(dim={"date": [data_array["date"][0]], "band": [0]})
+    # iterate by date
+    for date in range(data_array.shape[0]):
+        # set the maximum to be the max of (maximum, current image (date, band)),
+        # this can be done numerous ways, here are some suggestions:
+        # https://numpy.org/doc/stable/reference/generated/numpy.maximum.html
+        maxImg = np.maximum(maxImg, data_array[date, bandInd].values)
+       
 
-    # Set attributes to match the original data array, with the updated satellite type.
-    max_projection.attrs.update({
-        "satellite_type": SatelliteType.VIIRS_MAX_PROJ.value,
-        "tile_dir": data_array.attrs.get("tile_dir", ""),
-        "parent_tile_id": data_array.attrs.get("parent_tile_id", "")
-    })
+    # create a new data array (max_viirs_array) with shape (1, 1, 800, 800) and the
+    # relevant dims and coords. You can use np.reshape to transform the maximum (you
+    # just calculated it above) to have shape (1, 1, 800, 800)
+    max_array = xr.DataArray(np.reshape(maxImg.values, (1, 1, 800, 800)),
+                                    dims=("date", "band", "height", "width"),
+                                    coords={"date": [date], "band": [0]})
 
-    return max_projection
+    # set the attributes of the max_viirs_array. The satellite_type should be the
+    # SatelliteType.VIIRS_MAX_PROJ, while the other 2 attributes can be the same as the
+    # original data_array
+    max_array.attrs["satellite_type"] = SatelliteType.VIIRS_MAX_PROJ.value
+    max_array.attrs["tile_dir"] = data_array.attrs["tile_dir"]
+    max_array.attrs["parent_tile_id"] = data_array.attrs["parent_tile_id"]
+   
+    return max_array

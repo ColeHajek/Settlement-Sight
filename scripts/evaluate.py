@@ -22,7 +22,7 @@ def main(options):
     datamodule.prepare_data()
     datamodule.setup("fit")
 
-    model = ESDSegmentation.load_from_checkpoint(options.model_path)
+    model = ESDSegmentation.load_from_checkpoint(options.model_path, strict=False)
     
 
     directory_path = Path(options.processed_dir) / 'Val' / 'subtiles'

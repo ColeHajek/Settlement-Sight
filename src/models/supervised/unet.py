@@ -10,16 +10,8 @@ from torch.nn.functional import pad
 
 class DoubleConvHelper(nn.Module):
     """
-    A helper module that performs two consecutive convolutions followed by BatchNorm and ReLU activations.
-
-    This module implements a sequence of:
-        - Convolutional Layer
-        - Batch Normalization
-        - ReLU Activation
-        - Another Convolutional Layer
-        - Batch Normalization
-        - ReLU Activation
-
+    A helper module that performs two consecutive convolutions followed by BatchNorm, ReLU activations, and Dropout.
+    
     Parameters
     ----------
     in_channels : int
@@ -28,27 +20,34 @@ class DoubleConvHelper(nn.Module):
         Number of output channels.
     mid_channels : int, optional
         Number of channels to use in the intermediate convolution layer. If not provided, defaults to `out_channels // 2`.
+    dropout_prob : float, optional
+        Dropout probability. Defaults to 0.0 (no dropout).
     """
-
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    
+    def __init__(self, in_channels, out_channels, mid_channels=None, dropout_prob=0.0):
         super(DoubleConvHelper, self).__init__()
         if mid_channels is None:
             mid_channels = out_channels // 2
-
+        
         # First convolution block
         self.conv1 = nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(mid_channels)
         self.relu1 = nn.ReLU(inplace=True)
-
+        self.dropout1 = nn.Dropout2d(p=dropout_prob)  # Dropout after the first conv block
+        
         # Second convolution block
         self.conv2 = nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1)
         self.bn2 = nn.BatchNorm2d(out_channels)
         self.relu2 = nn.ReLU(inplace=True)
-
+        self.dropout2 = nn.Dropout2d(p=dropout_prob)  # Dropout after the second conv block
+    
     def forward(self, x):
         x = self.relu1(self.bn1(self.conv1(x)))
+        x = self.dropout1(x)  # Apply dropout after activation
         x = self.relu2(self.bn2(self.conv2(x)))
+        x = self.dropout2(x)  # Apply dropout after activation
         return x
+
 
 
 class Encoder(nn.Module):
@@ -130,54 +129,33 @@ class Decoder(nn.Module):
 
 
 class UNet(nn.Module):
-    """
-    U-Net model implementation.
-
-    U-Net is a type of Convolutional Neural Network (CNN) used primarily for segmentation tasks.
-    The U-Net architecture consists of a symmetric encoder-decoder structure where the encoder
-    progressively down-samples the input image and the decoder progressively up-samples the features
-    to predict segmentation masks. Skip connections are used to concatenate feature maps from the encoder
-    to the decoder, allowing for precise localization.
-
-    Parameters
-    ----------
-    in_channels : int
-        Number of input channels of the image (e.g., 3 for RGB images).
-    out_channels : int
-        Number of output channels (e.g., number of classes for segmentation).
-    n_encoders : int, optional
-        Number of encoder blocks, by default 2.
-    embedding_size : int, optional
-        Number of feature maps in the first encoder block, by default 64.
-    scale_factor : int, optional
-        Scaling factor for the final output, used to downscale the segmentation result, by default 50.
-    """
-
     def __init__(self, in_channels: int, out_channels: int, n_encoders: int = 2,
-                 embedding_size: int = 64, scale_factor: int = 50, **kwargs):
+                 embedding_size: int = 64, scale_factor: int = 50, dropout_prob=0.1, **kwargs):
         super(UNet, self).__init__()
-
-        # Initial double convolution to project from in_channels to embedding_size
-        self.init_double_conv = DoubleConvHelper(in_channels, embedding_size)
-
-        # Encoder blocks: progressively downsample and increase feature channels
+        
+        # Initial double convolution with dropout
+        self.init_double_conv = DoubleConvHelper(in_channels, embedding_size, dropout_prob=dropout_prob)
+        
+        # Encoder blocks with dropout
         self.encoders = nn.ModuleList()
         in_feats = embedding_size
         for _ in range(n_encoders - 1):
             self.encoders.append(Encoder(in_feats, in_feats * 2))
-            in_feats *= 2  # Double the number of features after each encoder block
+            in_feats *= 2
 
-        # Decoder blocks: progressively upsample and combine features with skip connections
+        # Decoder blocks
         self.decoders = nn.ModuleList()
         for _ in range(n_encoders - 1):
             self.decoders.append(Decoder(in_feats, in_feats // 2))
-            in_feats //= 2  # Halve the number of features after each decoder block
+            in_feats //= 2
 
-        # Final 1x1 convolution to project back to out_channels (number of classes)
+        # Final 1x1 convolution
         self.final_conv = nn.Conv2d(embedding_size, out_channels, kernel_size=1)
 
-        # Downscale the final output using MaxPool2D (this step is optional and depends on application)
+        # Downscale (optional)
         self.downscale = nn.MaxPool2d(kernel_size=scale_factor)
+    
+
 
     def forward(self, x):
         """

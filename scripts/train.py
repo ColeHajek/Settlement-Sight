@@ -64,7 +64,8 @@ def train(options: ESDConfig):
         "in_channels": options.in_channels,
         "out_channels": options.out_channels,
         "learning_rate": options.learning_rate,
-        "lambda_l1":options.lambda_l1
+        "lambda_l1":options.lambda_l1,
+        "dropout_prob":options.dropout_prob,
     }
 
     # initialize the ESDSegmentation model

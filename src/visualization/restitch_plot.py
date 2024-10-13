@@ -15,7 +15,7 @@ def restitch_and_plot(
     model,
     parent_tile_id: str,
     accelerator: str,
-    satellite_type: SatelliteType = SatelliteType.S2,
+    satellite_type: SatelliteType = SatelliteType.SENTINEL_2,
     selected_bands: List = ["04", "03", "02"],
     results_dir: Path = None,
 ):
@@ -259,3 +259,52 @@ def retrieve_subtile_file_csv(
     index = datamodule.test_dataset.subtile_dirs.index(subtile_file)
     X, y = datamodule.test_dataset[index]
     return X, y
+
+def plot_tile(
+    subtile: Subtile,
+    selected_bands: List[str] = ["04", "03", "02"],
+    satellite_type: SatelliteType = SatelliteType.SENTINEL_2,
+    results_dir: Path = None,
+):
+    """
+    Plots the RGB satellite image based on selected bands.
+
+    Parameters
+    ----------
+    subtile : Subtile
+        Subtile object containing the satellite data.
+    selected_bands : List[str], optional
+        List of bands to use for RGB plotting (default is ["04", "03", "02"]).
+    satellite_type : SatelliteType, optional
+        Satellite type to use for the RGB image (default is Sentinel-2).
+    results_dir : Path, optional
+        Directory to save the plot. If None, the plot is displayed.
+
+    Raises
+    ------
+    KeyError
+        If the specified satellite data is not available in the subtile.
+    """
+    # Select satellite data to plot
+    satellite_data = None
+    for sat_data in subtile.satellite_list:
+        if sat_data.satellite_type == satellite_type.value:
+            satellite_data = sat_data
+
+    if satellite_data is None:
+        raise KeyError("Missing satellite data from subtile")
+
+    # Convert satellite band data to image
+    tile_image = satellite_data.sel(band=selected_bands).to_numpy()[0].transpose(1, 2, 0)
+
+    # Create a plot
+    fig, ax = plt.subplots()
+    ax.set_title(f"Image (Bands {selected_bands})")
+    ax.imshow(tile_image)
+
+    if results_dir is None:
+        plt.show()
+    else:
+        results_dir.mkdir(parents=True, exist_ok=True)
+        fig.savefig(results_dir / "rgb_image.png", format="png")
+        plt.close()

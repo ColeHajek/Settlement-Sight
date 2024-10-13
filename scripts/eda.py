@@ -1,22 +1,22 @@
-#Revised version not yet functional with new implementation
-
-'''import os
+import os
 import sys
-from argparse import ArgumentParser
-from pathlib import Path
 import pyprojroot
-import matplotlib.pyplot as plt
-
-# Get the root directory for the project
 root = pyprojroot.here()
+from pathlib import Path
 
-# Local imports
-sys.path.append(".")
-from src.utilities import ESDConfig, load_config
-from src.preprocessing.data_loader import load_and_preprocess_satellite_data
+sys.path.append(str(root))
+from src.preprocessing.file_utils import (
+    load_satellite,
+    load_satellite_dir,
+)
+from src.preprocessing.preprocess_sat import (
+    maxprojection_viirs,
+)
 from src.visualization.plot_utils import (
     plot_satellite_by_bands,
+    #plot_viirs_by_date,
     plot_viirs_histogram,
+    plot_max_projection_viirs,
     plot_gt,
     plot_gt_histogram,
     plot_sentinel2_histogram,
@@ -25,110 +25,82 @@ from src.visualization.plot_utils import (
     plot_viirs
 )
 
-
-def main(options):
-    """
-    Main function for visualizing the dataset using the brown rice project modules.
-    """
-    # Define tile numbers and directories for the tiles
-    tile_nums = options.tile_nums
-    tile_dirs = [Path(options.raw_dir) / f"Tile{tile_num}" for tile_num in tile_nums]
-
-    # Define directory for saving plots
-    save_plots_dir = Path(root) / 'visualize'
-    save_plots_dir.mkdir(parents=True, exist_ok=True)
-
-    # Define test flags for visualization
-    test_flags = {
-        "viirs": True, #options.test_viirs,
-        "histograms": True, #options.test_histograms,
-        "sentinel1": True, #options.test_s1,
-        "landsat": True, #options.test_landsat,
-        "sentinel2": True, #options.test_s2,
-        "ground_truth": True, #options.test_gt,
-    }
-
-    # Iterate over each tile directory and visualize based on test flags
-    for tile_dir in tile_dirs:
-        print(f"Processing tile: {tile_dir.name}")
-
-        if test_flags["viirs"]:
-            viirs_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.VIIRS)
-            max_proj_viirs = viirs_stack.max(dim="date", skipna=True)  # Assuming the function has been updated
-            plot_viirs(max_proj_viirs, image_dir=save_plots_dir)
-            print("VIIRS max projection plot complete.")
-
-        if test_flags["histograms"]:
-            plot_histograms(tile_dir, save_plots_dir)
-
-        if test_flags["sentinel1"]:
-            sentinel1_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.SENTINEL1)
-            plot_satellite_by_bands(sentinel1_stack, ['VV', 'VH', 'VV-VH'], image_dir=save_plots_dir)
-            print("Sentinel-1 bands plot complete.")
-
-        if test_flags["sentinel2"]:
-            sentinel2_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.SENTINEL2)
-            bands = ['04', '03', '02']
-            plot_satellite_by_bands(sentinel2_stack, bands, image_dir=save_plots_dir)
-            print("Sentinel-2 bands plot complete.")
-
-        if test_flags["landsat"]:
-            landsat_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.LANDSAT)
-            bands = ['4', '3', '2']
-            plot_satellite_by_bands(landsat_stack, bands, image_dir=save_plots_dir)
-            print("Landsat bands plot complete.")
-
-        if test_flags["ground_truth"]:
-            gt_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.GT)
-            plot_gt(gt_stack, image_dir=save_plots_dir)
-            print("Ground truth plot complete.")
-
-
-def plot_histograms(tile_dir: Path, save_plots_dir: Path):
-    """
-    Function to plot histograms for various satellite types.
-
-    Parameters:
-        tile_dir (Path): The directory containing tile data.
-        save_plots_dir (Path): Directory to save the histograms.
-    """
-    viirs_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.VIIRS)
-    plot_viirs_histogram(viirs_stack, image_dir=save_plots_dir)
-    print("VIIRS histogram plot complete.")
-
-    s1_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.SENTINEL1)
-    plot_sentinel1_histogram(s1_stack, image_dir=save_plots_dir)
-    print("Sentinel-1 histogram plot complete.")
-
-    s2_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.SENTINEL2)
-    plot_sentinel2_histogram(s2_stack, image_dir=save_plots_dir)
-    print("Sentinel-2 histogram plot complete.")
-
-    landsat_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.LANDSAT)
-    plot_landsat_histogram(landsat_stack, image_dir=save_plots_dir)
-    print("Landsat histogram plot complete.")
-
-    gt_stack = load_and_preprocess_satellite_data(tile_dir, SatelliteType.GT)
-    plot_gt_histogram(gt_stack, image_dir=save_plots_dir)
-    print("Ground truth histogram plot complete.")
-
+from src.utilities import SatelliteType
 
 if __name__ == "__main__":
-    config = load_config()  # Assuming `load_config()` reads configurations for the brown rice project.
+    tile_num = 4
+    train_dir = Path(os.path.join(root, 'data', 'raw', 'Train'))
 
-    parser = ArgumentParser(description="Dataset visualization script for the brown rice project.")
-    parser.add_argument("--tile_nums", type=int, nargs="+", default=[4], help="List of tile numbers to process.")
-    parser.add_argument("--raw_dir", type=str, default=config.raw_dir, help="Path to raw directory.")
-    parser.add_argument("--processed_dir", type=str, default=config.processed_dir, help="Path to processed directory.")
-    parser.add_argument("--results_dir", type=str, default=config.results_dir, help="Results directory for saving plots.")
+    tile_dir = train_dir / f'Tile{tile_num}'
+    satellite_type = SatelliteType.GROUND_TRUTH
     
-    # Optional flags for different types of plots
-    parser.add_argument("--test_viirs", action="store_true", help="Plot VIIRS data.")
-    parser.add_argument("--test_histograms", action="store_true", help="Plot histograms for all data types.")
-    parser.add_argument("--test_s1", action="store_true", help="Plot Sentinel-1 data.")
-    parser.add_argument("--test_s2", action="store_true", help="Plot Sentinel-2 data.")
-    parser.add_argument("--test_landsat", action="store_true", help="Plot Landsat data.")
-    parser.add_argument("--test_gt", action="store_true", help="Plot ground truth data.")
 
-    args = parser.parse_args()
-    main(args)'''
+    save_plots_dir = os.path.join(root, 'visualize')
+    
+    #ensure directory for saving plots exists
+    plt_path = Path(save_plots_dir)
+    if not plt_path.exists():
+        plt_path.mkdir(parents=True,exist_ok = True)
+    
+    test_max_viirs = False
+    testHistograms = True
+    testS1 = False
+    testLandsat = False
+    testS2 = False
+    testGT = False
+    test_viirs = False
+
+    if testHistograms:
+        plot_functions = {
+            SatelliteType.SENTINEL_1: plot_sentinel1_histogram,
+            SatelliteType.GROUND_TRUTH: plot_gt_histogram,
+            SatelliteType.VIIRS: plot_viirs_histogram,
+            
+            SatelliteType.SENTINEL_2: plot_sentinel2_histogram,
+            SatelliteType.LANDSAT: plot_landsat_histogram,
+        }
+
+        # Iterate through the SatelliteType keys and plot functions
+        for satellite_type, plot_function in plot_functions.items():
+            # Load the dataset stack for the current satellite type
+            satellite_stack = load_satellite_dir(train_dir, satellite_type)
+            
+            # Call the corresponding plot function
+            plot_function(satellite_stack, image_dir=save_plots_dir)
+            
+            # Print the status to indicate progress
+            print(f"{satellite_type.name.lower()} hist done")
+        
+
+    if test_max_viirs:
+        viirs_stack = load_satellite(tile_dir, "viirs")
+        max_proj_viirs = maxprojection_viirs(viirs_stack)#.squeeze(0)
+    
+        plot_max_projection_viirs(max_proj_viirs, "VIIRS Max Projection", image_dir=save_plots_dir)
+        print("plot_viirs done")
+    if test_viirs:
+        viirs_stack = load_satellite(tile_dir, "viirs",image_dir=save_plots_dir)
+        plot_viirs(viirs_stack,'viirs',)
+
+    if testS1:
+        sentinel1_stack = load_satellite(tile_dir, "sentinel1")
+        plot_satellite_by_bands( sentinel1_stack, [['VV', 'VH', 'VV-VH']], "sentinel1", image_dir=save_plots_dir)
+        print("plot_s1 done")
+    
+    if testS2:
+        sentinel2_stack = load_satellite(tile_dir, "sentinel2")
+        plot_satellite_by_bands(sentinel2_stack, [['04', '03', '02'],['01'],['02'],['03'],['04'],['05'],['06'],['07'],['08'],['09'],['11'],['12'],['8A']], "sentinel2", image_dir=save_plots_dir)
+        print("plot s2 done")
+
+    if testLandsat:
+        landsat_stack, file_names = load_satellite(tile_dir, "landsat")
+             
+        plot_satellite_by_bands(landsat_stack, file_names, [['4', '3', '2'], ['1'],['2'],['3'],['4'],['5'],['6'],['7'],['9'],['10'],['11']], "landsat", image_dir=save_plots_dir)
+        print("plot landsat done")
+        
+    if testGT:    
+        gt_stack, gt_metadata = load_satellite(tile_dir, "gt")
+        plot_gt(gt_stack, "Ground Truth", image_dir=save_plots_dir)
+        print("plot gt done")
+    
+    exit(0)

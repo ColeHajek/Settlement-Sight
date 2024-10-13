@@ -122,7 +122,7 @@ class Subtile:
                     self._save_array(subtile, directory_to_save / "subtiles", x, y, filename)
 
                 # Save ground truth subtile
-                self._save_array(ground_truth_subtile, directory_to_save / "subtiles", x, y, f"{SatelliteType.GT.value}.nc")
+                self._save_array(ground_truth_subtile, directory_to_save / "subtiles", x, y, f"{SatelliteType.GROUND_TRUTH.value}.nc")
 
         # Clear data to free memory after saving
         self.satellite_list = None
@@ -184,7 +184,7 @@ class Subtile:
 
         ground_truth = None
         if has_gt:
-            ground_truth = xr.load_dataarray(directory_to_load / f"{SatelliteType.GT.value}.nc")
+            ground_truth = xr.load_dataarray(directory_to_load / f"{SatelliteType.GROUND_TRUTH.value}.nc")
 
         return Subtile(satellite_list=subtiled_data, ground_truth=ground_truth, slice_size=slice_size)
 
@@ -196,7 +196,7 @@ class Subtile:
             directory_to_load (Path): Directory containing the subtiles.
             satellite_type_list (List[SatelliteType]): List of satellite types to restitch.
         """
-        satellite_type_list_with_gt = satellite_type_list + [SatelliteType.GT]
+        satellite_type_list_with_gt = satellite_type_list + [SatelliteType.GROUND_TRUTH]
         stitched_data = [self._stitch_images(directory_to_load, satellite_type) for satellite_type in satellite_type_list_with_gt]
 
         self.satellite_list = stitched_data[:-1]

@@ -41,4 +41,4 @@ if __name__ == "__main__":
             print(f"Sweep config: {sweep_config}")
 
         sweep_id = wandb.sweep(sweep=sweep_config, project=PROJ_NAME)
-        wandb.agent(sweep_id, function=main, count=10)
+        wandb.agent(sweep_id, function=main, count=30)

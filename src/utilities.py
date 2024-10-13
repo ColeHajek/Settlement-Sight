@@ -10,10 +10,10 @@ import xarray as xr
 class SatelliteType(Enum):
     VIIRS_MAX_PROJ = "viirs_max_projection"
     VIIRS = "viirs"
-    S1 = "sentinel1"
-    S2 = "sentinel2"
+    SENTINEL_1 = "sentinel1"
+    SENTINEL_2 = "sentinel2"
     LANDSAT = "landsat"
-    GT = "gt"
+    GROUND_TRUTH = "gt"
 
 
 ROOT = Path.cwd()
@@ -28,15 +28,15 @@ class ESDConfig:
     checkpoint_file: str = ""
     results_dir: Path = ROOT / "results" / "predictions" / MODEL
 
-    model_path: Path = ROOT / "model_checkpoints" / MODEL / "last.ckpt"
+    model_path: Path = ROOT / "model_checkpoints" / MODEL / "last-v2.ckpt"
     load_from_check_point = False
     model_type: str = MODEL
     wandb_run_name: str | None = None
-    
+    '''
     selected_bands = {
         SatelliteType.VIIRS: ["0"],
-        SatelliteType.S1: ["VV", "VH"],
-        SatelliteType.S2: [
+        SatelliteType.SENTINEL_1: ["VV", "VH"],
+        SatelliteType.SENTINEL_2: [
             "12",
             "11",
             # "09",
@@ -58,10 +58,43 @@ class ESDConfig:
             "7",
             "6",
             "5",
-            "4",
+            #"4",
             #"3",
             #"2",
             # "1",
+        ],
+        SatelliteType.VIIRS_MAX_PROJ: ["0"],
+    }
+    '''
+    selected_bands = {
+        SatelliteType.VIIRS: ["0"],
+        SatelliteType.SENTINEL_1: ["VV", "VH"],
+        SatelliteType.SENTINEL_2: [
+            "12",
+            "11",
+             "09",
+            "8A",
+            "08",
+            "07",
+            "06",
+            "05",
+            "04",
+            "03",
+            "02",
+            "01",
+        ],
+        SatelliteType.LANDSAT: [
+            "11",
+            "10",
+            "9",
+            "8",
+            "7",
+            "6",
+            "5",
+            "4",
+            "3",
+            "2",
+            "1",
         ],
         SatelliteType.VIIRS_MAX_PROJ: ["0"],
     }
@@ -69,23 +102,31 @@ class ESDConfig:
     accelerator: str = "gpu"
     devices: int = 1
     num_workers: int = 4
-    optomizer: str = "adam"
-    batch_size: int = 32
-    depth: int = 4
-    embedding_size: int = 64
-    kernel_size: int = 3
-    n_encoders: int = 3
+
+
+    batch_size: int = 16
+    depth: int = 3
+    embedding_size: int = 128
+    kernel_size: int = 5
+    n_encoders: int = 2
     learning_rate: float = 0.0001
-    lambda_l1: float =0.00
+    lambda_l1: float =0.0001
     pool_sizes: str = "5,5,2"
     slice_size: tuple = (4, 4)
     max_epochs: int = 100
-
-    in_channels: int = 57  
-    out_channels: int = 4  
+    dropout_prob: float = 0.2
+    in_channels: int = 54
+    out_channels: int = 4
     
-    seed: int = 12378921
-    
+    seed: int = 12345678
+    '''
+    Batch size: 16
+    Max epochs: 10
+    Learning rate: 0.001
+    Embedding Size: 128
+    Number of Encoders: 2
+    Using lr_Adam
+    '''
 def get_satellite_dataset_size(
     data_set: xr.Dataset, dims: List[str] = ["date", "band", "height", "width"]
 ):

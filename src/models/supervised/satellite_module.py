@@ -15,16 +15,17 @@ class ESDSegmentation(pl.LightningModule):
         out_channels,
         learning_rate=1e-3,
         model_params: dict = {},
-        lambda_l1=0.01
+        lambda_l1=0.01,
+        dropout_prob = 0.5,
     ):
         super().__init__()
         self.save_hyperparameters()
         self.learning_rate = learning_rate
         self.lambda_l1 = lambda_l1
-        
+        self.dropout_prob = dropout_prob
         # Initialize model based on the model_type parameter
         if model_type.lower() == "unet":
-            self.model = UNet(in_channels=in_channels, out_channels=out_channels, **model_params)
+            self.model = UNet(in_channels=in_channels, out_channels=out_channels,dropout_prob=dropout_prob, **model_params)
         elif model_type.lower() == "segmentation_cnn":
             self.model = SegmentationCNN(in_channels=in_channels, out_channels=out_channels, **model_params)
         elif model_type.lower() == "fcn_resnet_transfer":
@@ -60,8 +61,13 @@ class ESDSegmentation(pl.LightningModule):
             target: Ground truth labels.
             prefix: "train" or "val" to specify the phase for logging.
         """
-        # Compute cross-entropy loss with L1 regularization
-        loss = F.cross_entropy(preds, target) + self.l1_regularization()
+        # Compute cross-entropy loss 
+        loss = F.cross_entropy(preds, target)
+
+        # If lambda_l1 is being used add the penalty
+        if self.lambda_l1!=0:
+            loss += self.l1_regularization()
+        
         self.log(f'{prefix}_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         # Compute and log accuracy

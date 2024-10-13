@@ -129,29 +129,33 @@ class ESDDataModule(pl.LightningDataModule):
         """
         preprocess_functions = {
             SatelliteType.VIIRS: preprocess_viirs,
-            SatelliteType.S1: preprocess_sentinel1,
-            SatelliteType.S2: preprocess_sentinel2,
+            SatelliteType.SENTINEL_1: preprocess_sentinel1,
+            SatelliteType.SENTINEL_2: preprocess_sentinel2,
             SatelliteType.LANDSAT: preprocess_landsat,
         }
 
         # Load and preprocess each satellite type, excluding VIIRS max projection
-        preprocessed_data_array_list = [
-            preprocess_functions[satellite_type](
-                load_satellite(tile_dir, satellite_type).sel(band=self.selected_bands[satellite_type])
-            )
-            for satellite_type in self.satellite_type_list if satellite_type != SatelliteType.VIIRS_MAX_PROJ
-        ]
+        preprocessed_data_array_list = list()
+        for satellite_type in self.satellite_type_list:
 
+            if satellite_type != SatelliteType.VIIRS_MAX_PROJ:
+                data_array = load_satellite(tile_dir, satellite_type)
+                #print(data_array)
+                #print('bands',self.selected_bands[satellite_type])
+                preprocessed_data_array_list.append(
+                    preprocess_functions[satellite_type](
+                        data_array.sel(band=self.selected_bands[satellite_type])
+                    )
+                )
         # Handle VIIRS max projection separately if it exists in the satellite types
         if SatelliteType.VIIRS_MAX_PROJ in self.satellite_type_list:
             preprocessed_data_array_list.append(
                 maxprojection_viirs(load_satellite(tile_dir, SatelliteType.VIIRS))
             )
-        # Load ground truth data
-        gt_data = load_satellite(tile_dir, SatelliteType.GT)
-
+        gt_data = load_satellite(tile_dir, SatelliteType.GROUND_TRUTH)
         return preprocessed_data_array_list, gt_data
 
+        
     def prepare_data(self) -> None:
         """
         If the data has not been processed before (denoted by whether or not self.processed_dir is an existing directory),
