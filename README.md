@@ -1,5 +1,5 @@
 # Note:
-This readme file is for a previous version of settlement sight (https://github.com/cs175cv-w2024/final-project-the-thunder-men) it mostly holds up but take it with a grain of salt
+This readme file is for a previous version of settlement sight (https://github.com/cs175cv-w2024/final-project-the-thunder-men). This is an updated version that's in development to improve the modularity, readability, and overall professionalism of the project. 
 
 
 # Semantic Segmentation for Subsaharan Satellite Images
